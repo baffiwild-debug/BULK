@@ -1,0 +1,2371 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    body { background: #f4f7f6; font-family: 'Segoe UI', sans-serif; }
+    .sidebar { background: #111b21; color: white; height: 100vh; padding: 30px 20px; position: sticky; top: 0; overflow-y: auto; z-index: 1000; }
+    .nav-link { 
+      color: #8a9a9d; 
+      cursor: pointer; 
+      padding: 15px 22px; 
+      border-radius: 10px; 
+      margin-bottom: 8px; 
+      transition: 0.2s all ease-in-out; 
+      font-weight: 600;    
+      font-size: 1.15rem;  
+      letter-spacing: 0.3px;
+      display: flex;
+      align-items: center;
+    }
+    .nav-link:hover, .nav-link.active { 
+      background: #202c33; 
+      color: #00a884; 
+      transform: translateX(5px); 
+    }
+    .main-content { padding: 40px; }
+    .card-shadow { box-shadow: 0 4px 12px rgba(0,0,0,0.05); border: none; border-radius: 12px; }
+    .age-stat-pill { cursor: pointer; transition: all 0.2s ease; user-select: none; }
+    .age-stat-pill:hover { transform: scale(1.05); filter: brightness(0.9); box-shadow: 0 2px 8px rgba(0,0,0,0.15); }
+    .age-stat-pill:active { transform: scale(0.95); }
+    .loader-overlay { position: fixed; top:0; left:0; width:100%; height:100%; background:rgba(255,255,255,0.9); display:flex; flex-direction:column; justify-content:center; align-items:center; z-index:9999; }
+    .tag-badge { background-color: #e2e8f0; color: #475569; border: 1px solid #cbd5e1; font-weight: 500; font-size: 0.75rem; }
+    .auto-regione { color: #d97706; font-weight: bold; background: #fef3c7; padding: 4px 10px; border-radius: 6px; display: inline-block; border: 1px solid #fde68a; font-size: 0.8rem;}
+    .table-responsive { max-height: 65vh; overflow-y: auto; }
+    /* Rende i contenitori delle statistiche cliccabili */
+.stat-box-interactive {
+  cursor: pointer;
+  transition: all 0.2s ease-in-out;
+  user-select: none;
+}
+.stat-box-interactive:hover {
+  transform: translateY(-3px);
+  filter: brightness(1.1);
+}
+.stat-box-interactive:active {
+  transform: translateY(0px);
+}
+
+/* Forza la tendina sopra le intestazioni appiccicose della tabella */
+#sync-dropdown-list {
+  z-index: 1060 !important; 
+}
+/* Evita che il clic sulle checkbox chiuda la tendina prematuramente */
+.dropdown-menu {
+  padding: 10px;
+}
+  </style>
+</head>
+<body>
+
+  <div id="loader" class="loader-overlay">
+    <div class="spinner-border text-success" style="width: 4rem; height: 4rem;" role="status"></div>
+    <h3 class="mt-4 fw-bold text-dark" id="loader-text">Avvio Sistema...</h3>
+  </div>
+
+  <div class="container-fluid p-0" id="app" style="display:none;">
+    <div class="row g-0">
+      
+      <div class="col-md-2 sidebar">
+        <h3 class="fw-bold mb-4" style="color: #00a884;">WA BULK <span class="fs-6 text-muted">v2.1</span></h3>
+        <div class="nav flex-column">
+          <div class="nav-link active" onclick="switchTab('tab-dashboard')">📊 Dashboard CRM</div>
+          <div class="nav-link" onclick="switchTab('tab-campagne')">📣 Invia Campagna</div>
+          <div class="nav-link" onclick="switchTab('tab-templates')">💬 Mex Predefiniti</div>
+          <div class="nav-link" onclick="switchTab('tab-sources')">🔗 Sorgenti (Meta Ads)</div>
+          <div class="nav-link" onclick="switchTab('tab-config')">⚙️ Impostazioni</div>
+        </div>
+        <div class="mt-auto pt-5">
+          <a id="link-db" href="#" target="_blank" class="btn btn-outline-success btn-sm w-100 mb-2">Apri DB Ombra ↗️</a>
+        </div>
+      </div>
+
+      <div class="col-md-10 main-content">
+        
+        <div id="tab-dashboard" class="view-section">
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <h2 class="fw-bold m-0">👥 Dashboard CRM</h2>
+            <div class="d-flex align-items-center gap-3">
+              
+              <div class="form-check form-switch m-0 d-flex align-items-center" title="Mostra/Nascondi Archiviati">
+                <input class="form-check-input cursor-pointer shadow-sm fs-5 m-0 me-2" type="checkbox" id="toggle-archiviati" onchange="renderLeadsTable(); var btn=document.getElementById('btn-bulk-archive'); if(btn) btn.innerHTML = this.checked ? '👼 Ripristina' : '👻 Archivia';">
+                <label class="form-check-label fw-bold text-muted mb-0" for="toggle-archiviati">👻 Archiviati</label>
+              </div>
+              
+              <button class="btn btn-success fw-bold shadow-sm px-3" onclick="exportFilteredLeads()" title="Esporta CSV">📥 CSV</button>
+              
+              <div class="vr bg-secondary opacity-25" style="width: 2px; height: 30px;"></div>
+              
+              <button class="btn btn-outline-dark fw-bold shadow-sm" onclick="runGeoBatch()" id="btn-geo">🧠 FORZA ANALISI GEO</button>
+              <div class="btn-group shadow-sm" id="sync-group">
+  <button class="btn btn-primary fw-bold" onclick="runSync('ALL')" id="btn-sync">🔄 SINCRO-SCAN TUTTI</button>
+  <button type="button" class="btn btn-primary dropdown-toggle dropdown-toggle-split" data-bs-toggle="dropdown" aria-expanded="false" onclick="populateSyncDropdown()">
+    <span class="visually-hidden">Sorgenti</span>
+  </button>
+  <style>
+    /* FIX GRAFICO: Forza la tendina sopra l'intestazione della tabella */
+    #sync-dropdown-list { z-index: 1070 !important; padding: 15px; }
+    .form-check-input { cursor: pointer; }
+    .form-check-label { cursor: pointer; width: 100%; }
+  </style>
+  <ul class="dropdown-menu dropdown-menu-end shadow-lg" id="sync-dropdown-list" style="min-width: 300px; max-height: 450px; overflow-y: auto;">
+    <li><h6 class="dropdown-header text-uppercase border-bottom pb-2 mb-2">📡 Seleziona Sorgenti</h6></li>
+    
+    <div id="sync-sources-items">
+      <div class="text-center small text-muted py-2">Caricamento...</div>
+    </div>
+    
+    <li><hr class="dropdown-divider"></li>
+    <li class="pt-2">
+      <div class="row g-1">
+        <div class="col-6">
+          <button class="btn btn-xs btn-outline-primary w-100 fw-bold small" style="font-size: 0.65rem;" onclick="runSyncSelected(false)" title="Aggiorna anche i dati dei lead già presenti">🧬 PROFONDO</button>
+        </div>
+        <div class="col-6">
+          <button class="btn btn-xs btn-primary w-100 fw-bold small" style="font-size: 0.65rem;" onclick="runSyncSelected(true)" title="Scarica solo i nuovi lead (Veloce)">🚀 TURBO SMART</button>
+        </div>
+      </div>
+    </li>
+  </ul>
+</div>
+            </div>
+          </div>
+          
+          <div class="alert alert-secondary py-2 small mb-4 text-muted border-0 shadow-sm">
+            <div data-bs-toggle="collapse" data-bs-target="#collapseGuide" style="cursor: pointer;" class="fw-bold d-flex justify-content-between align-items-center">
+              <span>📖 Guida Operativa (Clicca per espandere)</span>
+              <span>⬇️</span>
+            </div>
+            <div class="collapse" id="collapseGuide">
+              <div class="mt-3 pt-3 border-top border-secondary border-opacity-25" id="disp-INSTR_DASHBOARD" style="white-space: pre-wrap;"></div>
+            </div>
+          </div>
+
+          <div class="row g-2 mb-3 align-items-center">
+            <div class="col-md-2">
+              <input type="text" id="filter-text" class="form-control border-success shadow-sm" placeholder="🔍 Cerca..." onkeyup="renderLeadsTable()" autocomplete="one-time-code" spellcheck="false">
+            </div>
+            <div class="col-md-2">
+              <select id="filter-funnel" class="form-select border-primary shadow-sm" onchange="renderLeadsTable()"><option value="">Funnel</option></select>
+            </div>
+            <div class="col-md-2">
+              <select id="filter-eta" class="form-select border-info shadow-sm" onchange="renderLeadsTable()">
+                <option value="">Età</option>
+                <option value="CHILD">👶 Child</option>
+                <option value="YOUNG">👦 Young</option>
+                <option value="ADULT">👱 Adult</option>
+                <option value="MAN">👨 Man</option>
+                <option value="OLD">👴 Old</option>
+                <option value="N/D">❓ N/D</option>
+              </select>
+            </div>
+            <div class="col-md-2">
+              <select id="filter-macroarea" class="form-select border-secondary shadow-sm" onchange="renderLeadsTable()">
+                <option value="">Macroarea</option>
+                <option value="NORD">NORD</option>
+                <option value="CENTRO">CENTRO</option>
+                <option value="SUD">SUD</option>
+                <option value="VICINI WILDU">VICINI WILDU</option>
+              </select>
+            </div>
+            <div class="col-md-2">
+              <select id="filter-regione" class="form-select border-warning shadow-sm" onchange="renderLeadsTable()"><option value="">Regione</option></select>
+            </div>
+            <div class="col-md-2 d-flex align-items-center justify-content-end gap-2">
+              <button class="btn btn-sm btn-outline-danger fw-bold shadow-sm px-2" onclick="resetDashboardFilters()" title="Azzera tutti i filtri">✖ Reset</button>
+              <span class="text-muted fw-bold">Filtrati:</span>
+              <span id="lead-count" class="badge bg-dark fs-5 shadow-sm px-3 py-2">0</span>
+            </div>
+          </div>
+
+          <div class="row mb-3">
+            <div class="col-12">
+              <div class="d-flex flex-wrap gap-2 p-3 bg-white border rounded shadow-sm align-items-center">
+                <div class="me-auto">
+                  <span class="fw-bold text-uppercase small text-muted" style="letter-spacing: 1px;">
+                    <i class="bi bi-graph-up"></i> Distribuzione Età
+                  </span>
+                </div>
+                <div class="px-3 py-1 rounded-pill border border-success bg-success bg-opacity-10 text-success small fw-bold age-stat-pill" onclick="quickFilterAge('CHILD')">
+                  (<span id="th-c"></span>) 👶 Child: <span id="cnt-child">0</span>
+                </div>
+                <div class="px-3 py-1 rounded-pill border border-primary bg-primary bg-opacity-10 text-primary small fw-bold age-stat-pill" onclick="quickFilterAge('YOUNG')">
+                  (<span id="th-y"></span>) 👦 Young: <span id="cnt-young">0</span>
+                </div>
+                <div class="px-3 py-1 rounded-pill border border-info bg-info bg-opacity-10 text-info small fw-bold age-stat-pill" onclick="quickFilterAge('ADULT')">
+                  (<span id="th-a"></span>) 👱 Adult: <span id="cnt-adult">0</span>
+                </div>
+                <div class="px-3 py-1 rounded-pill border border-warning bg-warning bg-opacity-10 text-warning-emphasis small fw-bold age-stat-pill" onclick="quickFilterAge('MAN')">
+                  (<span id="th-m"></span>) 👨 Man: <span id="cnt-man">0</span>
+                </div>
+                <div class="px-3 py-1 rounded-pill border border-secondary bg-secondary bg-opacity-10 text-secondary small fw-bold age-stat-pill" onclick="quickFilterAge('OLD')">
+                  (<span id="th-o"></span>) 👴 Old: <span id="cnt-old">0</span>
+                </div>
+                <div class="px-3 py-1 rounded-pill border border-dark bg-dark bg-opacity-10 text-dark small fw-bold age-stat-pill" onclick="quickFilterAge('N/D')">
+                  ❓ N/D: <span id="cnt-nd">0</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="card card-shadow p-0 overflow-hidden">
+            <div class="table-responsive">
+              <table class="table table-hover align-middle mb-0" style="font-size: 0.85rem;">
+                <thead class="table-light sticky-top">
+                  <tr>
+                    <th style="width: 40px; text-align: center;">
+                      <input type="checkbox" id="check-all" class="form-check-input border-secondary" onclick="toggleAllChecks(this)">
+                    </th>
+                    <th style="width: 15%;">Nome / Tel</th>
+                    <th style="width: 20%;">Email / Sorgente</th>
+                    <th class="bg-warning bg-opacity-10" style="width: 12%;">📍 Residenza</th>
+                    <th style="width: 15%;">Funnel / Status</th>
+                    <th style="width: 25%;">Tags & Note</th>
+                    <th class="text-end" style="width: 13%;">Azioni</th>
+                  </tr>
+                </thead>
+                <tbody id="leads-body"><tr><td colspan="7" class="text-center text-muted py-5">Caricamento...</td></tr></tbody>
+              </table>
+              <div id="pagination-container" class="mt-4 mb-2"></div>
+            </div>
+          </div>
+        </div>
+
+        <div id="tab-campagne" class="view-section" style="display:none;">
+          <h2 class="fw-bold mb-4">📣 Compositore Campagne</h2>
+          <div class="row">
+            
+            <div class="col-md-5">
+              <div class="card card-shadow p-4 mb-4 border-primary border-2">
+  <h5 class="fw-bold text-primary mb-3">🎯 1. Segmentazione Target</h5>
+  
+  <div class="d-flex justify-content-between align-items-end mb-1 mt-1">
+    <label class="small fw-bold m-0 text-success">🎯 TARGET DESIDERI (OR)</label>
+    <select id="sel-desideri" class="form-select form-select-sm border-success" style="width: 55%; font-size: 0.75rem;" onchange="appendFilter('camp-desideri', this.value); this.value='';">
+      <option value="">+ Scegli da lista...</option>
+    </select>
+  </div>
+  <input type="text" id="camp-desideri" class="form-control mb-3 border-success" placeholder="Digita desideri (separati da virgola)..." onkeyup="updateLiveCampaignCount()">
+
+  <div class="d-flex justify-content-between align-items-end mb-1 mt-1">
+    <label class="small fw-bold m-0">Calderone (OR)</label>
+    <select id="sel-calderone" class="form-select form-select-sm border-primary" style="width: 55%; font-size: 0.75rem;" onchange="appendFilter('camp-calderone', this.value); this.value='';">
+      <option value="">+ Scegli da lista...</option>
+    </select>
+  </div>
+  <input type="text" id="camp-calderone" class="form-control mb-2 border-primary" placeholder="Digita o seleziona dal menu..." onkeyup="updateLiveCampaignCount()">
+  
+  <div class="d-flex justify-content-between align-items-end mb-1">
+    <label class="small fw-bold m-0">Requisito Rigido (AND)</label>
+    <select id="sel-requisito" class="form-select form-select-sm" style="width: 55%; font-size: 0.75rem;" onchange="appendFilter('camp-requisito', this.value); this.value='';">
+      <option value="">+ Scegli da lista...</option>
+    </select>
+  </div>
+  <input type="text" id="camp-requisito" class="form-control mb-2" placeholder="Digita o seleziona dal menu..." onkeyup="updateLiveCampaignCount()">
+  
+  <div class="d-flex justify-content-between align-items-end mb-1">
+    <label class="small fw-bold m-0">Esclusione (NOT)</label>
+    <select id="sel-esclusione" class="form-select form-select-sm border-danger" style="width: 55%; font-size: 0.75rem;" onchange="appendFilter('camp-esclusione', this.value); this.value='';">
+      <option value="">+ Scegli da lista...</option>
+    </select>
+  </div>
+  <input type="text" id="camp-esclusione" class="form-control mb-4 border-danger" placeholder="Digita o seleziona dal menu..." onkeyup="updateLiveCampaignCount()">
+  
+  <hr>
+  <h6 class="fw-bold">⏱️ Filtri Temporali (Scudo)</h6>
+  <div class="form-check mb-2 mt-2">
+    <input class="form-check-input" type="checkbox" id="camp-solonuovi" onchange="updateLiveCampaignCount()">
+    <label class="form-check-label small fw-bold text-success" for="camp-solonuovi">Solo Segmento "Nuovi Lead" (Vergini)</label>
+  </div>
+  <label class="small fw-bold text-muted">Escludi contattati negli ultimi X giorni:</label>
+  <input type="number" id="camp-scudo" class="form-control mb-4" value="14" onchange="updateLiveCampaignCount()">
+
+  <div class="alert alert-dark d-flex justify-content-between align-items-center p-2 mb-2 shadow-sm" style="border-left: 5px solid #0d6efd;">
+    <div class="small fw-bold text-uppercase">🎯 Pubblico Stimato:</div>
+    <div class="fs-5 fw-bold text-primary"><span id="live-target-count">0</span> <small class="text-muted" style="font-size: 0.7rem;">LEADS</small></div>
+  </div>
+
+  <button class="btn btn-outline-primary w-100 fw-bold fs-5" onclick="simulateTarget()">📊 CALCOLA TARGET</button>
+</div>
+              
+              <div class="card card-shadow p-4 mb-4 border-secondary border-2">
+                <h5 class="fw-bold text-secondary mb-3">🗺️ 2. Seleziona Viaggio (Presto Attivo)</h5>
+                <p class="small text-muted mb-2">Seleziona un viaggio per estrarre automaticamente i dettagli dal sito e incollarli come appunti.</p>
+                <select class="form-select mb-2 text-muted" disabled>
+                  <option>-- Caricamento viaggi dal sito... --</option>
+                </select>
+                <button class="btn btn-secondary btn-sm w-100 fw-bold mb-3" disabled>📥 Estrai Dettagli Viaggio</button>
+                <label class="small fw-bold">Dettagli Estratti (Area Appunti)</label>
+                <div class="p-2 bg-light border rounded small text-muted user-select-all" style="min-height: 80px; cursor: text;">Qui appariranno i dettagli del viaggio da copiare a mano nel corpo del messaggio...</div>
+              </div>
+            </div>
+
+            <div class="col-md-7">
+              <div class="card card-shadow p-4 mb-4 border-success border-2">
+                <h5 class="fw-bold text-success mb-3">💬 3. Composizione Messaggio</h5>
+                
+                <div class="mb-3">
+                  <div class="d-flex justify-content-between align-items-end mb-1">
+                    <label class="small fw-bold m-0">1. Varianti Gancio (Hook)</label>
+                    <button class="btn btn-sm btn-outline-primary py-0" style="font-size:0.7rem;" onclick="insertAllVariants('TPL_HOOKS', 'camp-hook')">➕ Inserisci Tutte</button>
+                  </div>
+                  <select class="form-select mb-1 text-muted border-primary" onchange="var ta=document.getElementById('camp-hook'); ta.value = ta.value ? ta.value + '\n' + this.value : this.value; this.value='';">
+                    <option value="">-- Seleziona un singolo Gancio --</option>
+                  </select>
+                  <textarea id="camp-hook" class="form-control border-primary" rows="2" placeholder="Scrivi più varianti (una per riga). Il bot ne userà una a caso."></textarea>
+                </div>
+
+                <div class="mb-3">
+                  <label class="small fw-bold">2. Corpo Centrale (Fisso per tutti)</label>
+                  <textarea id="camp-body" class="form-control" rows="4" placeholder="Scrivi il cuore dell'offerta. (Puoi incollare qui i dettagli estratti dal box a sinistra)..."></textarea>
+                </div>
+
+                <div class="mb-3">
+                  <div class="d-flex justify-content-between align-items-end mb-1">
+                    <label class="small fw-bold text-info m-0">3. Varianti Transizione (Middle)</label>
+                    <button class="btn btn-sm btn-outline-info py-0" style="font-size:0.7rem;" onclick="insertAllVariants('TPL_MIDDLES', 'camp-middle')">➕ Inserisci Tutte</button>
+                  </div>
+                  <select class="form-select mb-1 text-muted border-info" onchange="var ta=document.getElementById('camp-middle'); ta.value = ta.value ? ta.value + '\n' + this.value : this.value; this.value='';">
+                    <option value="">-- Seleziona una Transizione --</option>
+                  </select>
+                  <textarea id="camp-middle" class="form-control border-info" rows="2" placeholder="Scrivi più varianti (una per riga)..."></textarea>
+                </div>
+
+                <div class="mb-3">
+                  <div class="d-flex justify-content-between align-items-end mb-1">
+                    <label class="small fw-bold text-warning m-0">4. Varianti Chiusura (Trust Score)</label>
+                    <button class="btn btn-sm btn-outline-warning py-0" style="font-size:0.7rem;" onclick="insertAllVariants('TPL_ENDINGS', 'camp-ending')">➕ Inserisci Tutte</button>
+                  </div>
+                  <select class="form-select mb-1 text-muted border-warning" onchange="var ta=document.getElementById('camp-ending'); ta.value = ta.value ? ta.value + '\n' + this.value : this.value; this.value='';">
+                    <option value="">-- Seleziona una Domanda --</option>
+                  </select>
+                  <textarea id="camp-ending" class="form-control border-warning" rows="2" placeholder="Scrivi più varianti (una per riga)..."></textarea>
+                </div>
+                
+                <div class="mb-3 p-3 bg-light border rounded">
+                  <label class="small fw-bold text-dark m-0">🖼️ Allega Immagine dal PC (Opzionale)</label>
+                  <p class="small text-muted mb-2" style="font-size: 0.75rem;">Seleziona un'immagine dal tuo computer. Verrà caricata nel tuo Google Drive per permettere l'invio automatico.</p>
+                  <input type="file" id="camp-image-file" class="form-control form-control-sm border-secondary mb-2" accept="image/*" onchange="handleImageUpload(this)">
+                  <input type="hidden" id="camp-image">
+                  <div id="upload-feedback" class="small fw-bold text-success d-none">✅ Immagine caricata e pronta per l'invio automatico!</div>
+                </div>
+
+                <div class="small text-muted mb-1 bg-light p-2 rounded border">💡 Usa <b>{NOME}</b>. Il sistema incrocerà a caso i blocchi per creare un messaggio unico per ogni lead!</div>
+              </div>
+
+              <div class="card card-shadow p-4 bg-dark text-white">
+                <h5 class="fw-bold mb-2 text-warning">🚀 4. Cruscotto di Lancio</h5>
+                <div id="camp-feedback" class="alert alert-secondary py-3 small mb-3 border-0 bg-secondary bg-opacity-25 text-white" style="white-space: pre-wrap;"><i>Clicca "Calcola Target" per simulare l'invio e vedere i tempi stimati in base ai tuoi limiti anti-ban...</i></div>
+                <button class="btn btn-success fw-bold w-100 fs-4" id="btn-generate-queue" disabled onclick="generateQueue()">GENERA CODA & INVIA</button>
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+        <div id="tab-templates" class="view-section" style="display:none;">
+          <h2 class="fw-bold mb-4">💬 Mex Predefiniti (Spintax)</h2>
+          <div class="card card-shadow p-4 border-primary border-2">
+            <h5 class="fw-bold text-primary mb-3">Templates Campagne (Una frase per riga)</h5>
+            
+            <div class="mb-4">
+              <label class="small fw-bold text-muted">Idee Gancio (Hook)</label>
+              <textarea id="conf-TPL_HOOKS" class="form-control border-primary" rows="9" placeholder="Ciao {NOME}, ti scrivo perché..."></textarea>
+            </div>
+            
+            <div class="mb-4">
+              <label class="small fw-bold text-muted text-info">Idee Transizione (Middle)</label>
+              <textarea id="conf-TPL_MIDDLES" class="form-control border-info" rows="9" placeholder="Inoltre, volevo dirti che...&#10;Un'altra cosa importante:"></textarea>
+            </div>
+            
+            <div class="mb-4">
+              <label class="small fw-bold text-muted text-warning">Idee Domanda Finale (Trust Score)</label>
+              <textarea id="conf-TPL_ENDINGS" class="form-control border-warning" rows="9" placeholder="Posso girarti i dettagli qui?"></textarea>
+            </div>
+            
+            <hr class="my-4 border-primary">
+            <h5 class="fw-bold text-primary mb-3">🏷️ Gestione Stati Funnel</h5>
+            
+            <div class="row g-2 mb-3 bg-light p-3 rounded border">
+              <div class="col-md-6 border-end">
+                <label class="small fw-bold text-success">➕ Aggiungi Nuovo Stato</label>
+                <div class="input-group input-group-sm mt-1">
+                  <input type="text" id="add-funnel-input" class="form-control border-success" placeholder="Es. IN VALUTAZIONE" style="text-transform: uppercase;">
+                  <button class="btn btn-success fw-bold" type="button" onclick="addFunnelUI()">Aggiungi</button>
+                </div>
+              </div>
+              <div class="col-md-6">
+                <label class="small fw-bold text-danger">➖ Rimuovi Stato Esistente</label>
+                <div class="input-group input-group-sm mt-1">
+                  <select id="remove-funnel-select" class="form-select border-danger">
+                    <option value="">-- Seleziona --</option>
+                  </select>
+                  <button class="btn btn-danger fw-bold" type="button" onclick="removeFunnelUI()">Elimina</button>
+                </div>
+              </div>
+            </div>
+            
+            <div class="mb-4">
+              <label class="small fw-bold text-muted">Lista Stati Attuali (Sola lettura)</label>
+              <textarea id="conf-TPL_FUNNELS" class="form-control border-secondary bg-light text-muted" rows="4" readonly></textarea>
+            </div>
+
+            <button type="button" class="btn btn-primary fw-bold w-100 py-3 fs-5" onclick="saveConfigs()">💾 SALVA TEMPLATES E FUNNEL</button>
+          </div>
+        </div>
+
+        <div id="tab-sources" class="view-section" style="display:none;">
+          <div class="d-flex justify-content-between align-items-center mb-4">
+            <h2 class="fw-bold m-0">Sorgenti Meta Ads</h2>
+            <button class="btn btn-success fw-bold" onclick="openSourceModal()">+ Collega Nuovo Foglio</button>
+          </div>
+          <div class="card card-shadow p-0 overflow-hidden">
+            <table class="table table-hover m-0 align-middle">
+              <thead class="table-light"><tr><th>Etichetta Sorgente</th><th>Foglio / Tab</th><th>Mappa / Stato Geo</th><th class="text-end">Azioni</th></tr></thead>
+              <tbody id="sources-list"><tr><td colspan="4" class="text-center text-muted py-4">Caricamento...</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div id="tab-config" class="view-section" style="display:none;">
+          <h2 class="fw-bold mb-4">⚙️ Impostazioni CRM</h2>
+          <div class="row">
+            
+            <div class="col-md-6">
+  <div class="card card-shadow p-4 mb-4 border-info">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+      <h5 class="fw-bold text-info m-0">🗺️ Segmentazione Macroaree</h5>
+      <button type="button" class="btn btn-sm btn-info text-white fw-bold" onclick="saveMacroaree()">💾 Salva Aree</button>
+    </div>
+    <div id="macro-warning" class="alert alert-danger d-none py-2 small fw-bold mb-3"></div>
+    <div id="macroaree-list" class="d-flex flex-column gap-3">
+      <div class="text-center text-muted small py-3">Caricamento...</div>
+    </div>
+  </div>
+
+
+  <div class="card card-shadow p-4 bg-light mb-4">
+               <h5 class="fw-bold">Database Geografico ISTAT</h5>
+                <p class="small text-muted">Scarica i comuni italiani per il riconoscimento automatico (necessario Autorizzare lo script la prima volta).</p>
+                <button class="btn btn-dark fw-bold w-100" id="btn-download-geo" onclick="updateGeoDict()">📥 Carica Dizionario Comuni</button>
+              </div>
+
+  <div class="card card-shadow p-4 mb-4 border-secondary">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+      <h5 class="fw-bold text-secondary m-0">📄 Paginazione Tabella</h5>
+    </div>
+    <div class="d-flex flex-column gap-2">
+      <label class="small fw-bold text-muted">Righe per Pagina (Dashboard)</label>
+      <div class="input-group">
+        <input type="number" id="setting-page-size" class="form-control border-secondary" value="1000" min="5" step="5">
+        <button class="btn btn-secondary fw-bold text-white" onclick="savePageSize()">💾 Salva</button>
+      </div>
+      <small class="text-muted mt-1" style="font-size: 0.75rem;">
+        Imposta a 5 o 10 per fare i test visivi, poi rimetti a 1000 per l'uso normale.
+      </small>
+    </div>
+  </div>
+
+  <div class="card card-shadow p-4 mb-4 border-secondary">
+    <h6 class="fw-bold text-secondary">👥 Soglie Demografiche (Età)</h6>
+    <p class="small text-muted mb-2">Imposta l'età <b>massima</b> per ogni fascia. Oltre l'ultima soglia il target diventerà automaticamente "Old".</p>
+    <div class="row g-2 mb-3">
+      <div class="col-3"><label class="small fw-bold text-success">Child (fino a)</label><input type="number" id="conf-AGE_TH_1" class="form-control border-success" placeholder="Es. 17"></div>
+      <div class="col-3"><label class="small fw-bold text-primary">Young (fino a)</label><input type="number" id="conf-AGE_TH_2" class="form-control border-primary" placeholder="Es. 30"></div>
+      <div class="col-3"><label class="small fw-bold text-info">Young Man (a)</label><input type="number" id="conf-AGE_TH_3" class="form-control border-info" placeholder="Es. 45"></div>
+      <div class="col-3"><label class="small fw-bold text-warning">Man (fino a)</label><input type="number" id="conf-AGE_TH_4" class="form-control border-warning" placeholder="Es. 54"></div>
+    </div>
+    <p class="small text-muted mb-3"><i>Chi supera l'ultima soglia (es. 55+) entrerà automaticamente nel segmento <b>Old</b>.</i></p>
+    <button type="button" class="btn btn-outline-secondary btn-sm fw-bold w-100" onclick="saveConfigs()">💾 Salva Soglie Età</button>
+  </div>
+
+</div>
+
+            <div class="col-md-6">
+              <div class="card card-shadow p-4 mb-4">
+                <h5 class="fw-bold mb-3">Ritmo Invio Massivo</h5>
+                <form id="config-form">
+                  <div class="row g-3">
+                    <div class="col-6"><label class="small fw-bold">Delay Min (s)</label><input type="number" id="conf-DELAY_MIN" class="form-control"></div>
+                    <div class="col-6"><label class="small fw-bold">Delay Max (s)</label><input type="number" id="conf-DELAY_MAX" class="form-control"></div>
+                    <div class="col-6"><label class="small fw-bold">Pausa dopo (msg)</label><input type="number" id="conf-PAUSA_BLOCCO" class="form-control"></div>
+                    <div class="col-6"><label class="small fw-bold">Minuti Pausa</label><input type="number" id="conf-MINUTI_PAUSA" class="form-control"></div>
+                    <div class="col-12"><label class="small fw-bold">Limite Giornaliero</label><input type="number" id="conf-LIMITE_GIORNO" class="form-control"></div>
+                  </div>
+                  
+                  <div id="disp-INSTR_LIMITS" class="alert alert-warning py-2 small mt-3 mb-0" style="white-space: pre-wrap;"></div>
+                  
+                  <hr class="my-4">
+                  <h6 class="fw-bold">Testi Istruzioni Dinamiche</h6>
+                  <label class="small fw-bold text-muted">Istruzioni Dashboard (Vicino ai pulsanti)</label>
+                  <textarea id="conf-INSTR_DASHBOARD" class="form-control mb-2" rows="2" placeholder="Es. Clicca Sync per scaricare i dati da Meta..."></textarea>
+                  
+                  <label class="small fw-bold text-muted">Allerta Limiti Invio (Sotto i parametri)</label>
+                  <textarea id="conf-INSTR_LIMITS" class="form-control mb-3" rows="2" placeholder="Es. ATTENZIONE: Per evitare il ban non superare..."></textarea>
+                  
+                  <button type="button" class="btn btn-success fw-bold w-100 mt-2" onclick="saveConfigs()">💾 Salva Configurazioni</button>
+                </form>
+              </div>
+
+              
+            </div>
+
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <div class="modal fade" id="modalEditLead" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content border-0 card-shadow">
+        <div class="modal-header bg-dark text-white border-0"><h5 class="modal-title fw-bold">✏️ Modifica Contatto</h5><button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button></div>
+        <div class="modal-body p-4">
+          <input type="hidden" id="edit-lead-phone">
+          <div class="mb-3 fw-bold" id="edit-lead-name"></div>
+          <div class="row g-2 mb-3">
+            <div class="col-5">
+              <label class="small fw-bold">Funnel</label>
+              <select id="edit-lead-funnel" class="form-select border-primary">
+                <option value="NUOVO">NUOVO</option>
+                <option value="RITORNO">RITORNO</option>
+                <option value="CONTATTATO">CONTATTATO</option>
+                <option value="NON RISPONDE">NON RISPONDE</option>
+                <option value="IN TRATTATIVA">IN TRATTATIVA</option>
+                <option value="CHIUSO">CHIUSO</option>
+              </select>
+            </div>
+            <div class="col-4">
+  <label class="small fw-bold text-warning">Regione</label>
+  <select id="edit-lead-regione" class="form-select border-warning" style="font-size: 0.85rem;">
+    <option value="">N/D</option>
+    <option value="ABRUZZO">Abruzzo</option>
+    <option value="BASILICATA">Basilicata</option>
+    <option value="CALABRIA">Calabria</option>
+    <option value="CAMPANIA">Campania</option>
+    <option value="EMILIA-ROMAGNA">Emilia-Romagna</option>
+    <option value="FRIULI-VENEZIA GIULIA">Friuli-Venezia Giulia</option>
+    <option value="LAZIO">Lazio</option>
+    <option value="LIGURIA">Liguria</option>
+    <option value="LOMBARDIA">Lombardia</option>
+    <option value="MARCHE">Marche</option>
+    <option value="MOLISE">Molise</option>
+    <option value="PIEMONTE">Piemonte</option>
+    <option value="PUGLIA">Puglia</option>
+    <option value="SARDEGNA">Sardegna</option>
+    <option value="SICILIA">Sicilia</option>
+    <option value="TOSCANA">Toscana</option>
+    <option value="TRENTINO-ALTO ADIGE">Trentino-Alto Adige</option>
+    <option value="UMBRIA">Umbria</option>
+    <option value="VALLE D'AOSTA">Valle d'Aosta</option>
+    <option value="VENETO">Veneto</option>
+  </select>
+</div>
+            <div class="col-3"><label class="small fw-bold text-info">Età/Anno</label><input type="text" id="edit-lead-eta" class="form-control border-info" placeholder="Es. 45 o 1980"></div>
+          </div>
+          <div class="row g-2 mb-3">
+            <div class="col-12"><label class="small fw-bold text-success">⭐ Desideri (separati da virgola)</label><input type="text" id="edit-lead-desideri" class="form-control border-success" placeholder="Es. Maldive, Giappone"></div>
+          </div>
+          <label class="small fw-bold">Tags</label><input type="text" id="edit-lead-tags" class="form-control mb-3">
+          <label class="small fw-bold">Note Interne</label><textarea id="edit-lead-note" class="form-control mb-4" rows="3"></textarea>
+          
+          <div class="d-flex justify-content-between mt-2">
+            <button class="btn btn-outline-danger fw-bold px-3" onclick="deleteLeadAction()">🗑️ Elimina</button>
+            <button class="btn btn-primary fw-bold px-4 w-75" onclick="saveLeadEdit()">💾 Aggiorna Database</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal fade" id="modalAddSource" tabindex="-1" data-bs-backdrop="static">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+      <div class="modal-content border-0 card-shadow">
+        <div class="modal-header bg-success text-white border-0"><h5 class="modal-title fw-bold" id="source-modal-title">🔗 Collega Foglio Meta</h5><button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button></div>
+        <div class="modal-body p-4">
+          <input type="hidden" id="source-row-index">
+          <div id="step-1">
+            <label class="small fw-bold">Link del Foglio Google</label><input type="text" id="source-url" class="form-control mb-4">
+            <button class="btn btn-dark w-100 fw-bold py-2" onclick="analyzeSource()">Analizza e Leggi Dati 🔍</button>
+          </div>
+          <div id="step-2" style="display:none;" class="mt-4 pt-4 border-top">
+            <input type="hidden" id="source-id-hidden">
+            <div class="form-check form-switch mb-4 p-3 bg-danger bg-opacity-10 border border-danger rounded">
+              <input class="form-check-input ms-0 me-2" type="checkbox" id="source-skip-geo" style="float: left;">
+              <label class="form-check-label fw-bold text-danger small" for="source-skip-geo">🚫 KILL SWITCH: Escludi questo foglio dall'Analisi Geografica Bot (Evita falsi positivi su fogli sporchi).</label>
+            </div>
+            <div class="row g-3 mb-4 p-3 bg-light rounded border">
+              <div class="col-md-6"><label class="small fw-bold">Linguetta</label><select id="source-tab" class="form-select"></select></div>
+              <div class="col-md-6"><label class="small fw-bold">Riga Intestazioni</label><input type="number" id="source-header-row" class="form-control" value="1"></div>
+            </div>
+            <div class="row g-3 mb-3">
+              <div class="col-6"><label class="small fw-bold">NOME *</label><select id="source-col-nome" class="form-select border-primary"></select></div>
+              <div class="col-6"><label class="small fw-bold">TEL *</label><select id="source-col-tel" class="form-select border-primary"></select></div>
+            </div>
+            <div class="row g-3 mb-3">
+              <div class="col-6"><label class="small fw-bold">EMAIL</label><select id="source-col-email" class="form-select"></select></div>
+              <div class="col-6"><label class="small fw-bold">MAPPATURA DIRETTA REGIONE (Opz.)</label><select id="source-col-regione" class="form-select border-warning"></select></div>
+            </div>
+            <div class="row g-3 mb-4">
+              <div class="col-6"><label class="small fw-bold text-info">ETÀ / ANNO (Opzionale)</label><select id="source-col-eta" class="form-select border-info"></select></div>
+              <div class="col-6"><label class="small fw-bold text-success">DESIDERI (Opzionale)</label><select id="source-col-desideri" class="form-select border-success"></select></div>
+            </div>
+            <div class="mb-4"><label class="small fw-bold">TUTTI GLI ALTRI TAGS DA ASPIRARE</label><div id="source-col-tags" class="border rounded p-2 bg-white" style="max-height: 120px; overflow-y: auto;"></div></div>
+            <label class="small fw-bold">Etichetta Identificativa Sorgente</label><input type="text" id="source-label" class="form-control mb-4">
+            <button class="btn btn-success w-100 fw-bold" onclick="saveSource()">💾 Salva Sorgente</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+
+  <div class="modal fade" id="modalSyncReport" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+      <div class="modal-content border-0 card-shadow">
+        <div class="modal-header bg-primary text-white border-0">
+          <h5 class="modal-title fw-bold">📊 Report Sincro-Scan</h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body p-4">
+          
+          <div class="row text-center mb-4">
+            <div class="col-6 border-end">
+              <div class="fs-1 fw-bold text-success" id="sync-rep-new">0</div>
+              <div class="small fw-bold text-muted text-uppercase">Nuovi Lead Inseriti</div>
+            </div>
+            <div class="col-6">
+              <div class="fs-1 fw-bold text-info" id="sync-rep-upd">0</div>
+              <div class="small fw-bold text-muted text-uppercase">Lead Aggiornati/Risvegliati</div>
+            </div>
+          </div>
+          
+          <h6 class="fw-bold mb-2 text-dark">Anteprima Operazioni (Primi 10)</h6>
+          <div id="sync-rep-preview" class="p-3 bg-light border border-secondary border-opacity-25 rounded small mb-4 text-dark" style="font-family: monospace; max-height: 250px; overflow-y: auto; white-space: pre-wrap;">
+            Caricamento log...
+          </div>
+          
+          <textarea id="sync-rep-full" class="d-none"></textarea>
+          
+          <button class="btn btn-outline-primary fw-bold w-100 py-2" onclick="copySyncReport()" id="btn-copy-sync">
+            📋 COPIA REPORT COMPLETO NEGLI APPUNTI
+          </button>
+          
+        </div>
+      </div>
+    </div>
+  </div>
+
+
+<div class="modal fade" id="modalGeoReport" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+      <div class="modal-content border-0 card-shadow">
+        <div class="modal-header bg-dark text-white border-0">
+          <h5 class="modal-title fw-bold">🧠 Report Analisi Geografica</h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body p-4">
+          
+          <div class="row text-center mb-4">
+            <div class="col-12">
+              <div class="fs-1 fw-bold text-warning" id="geo-rep-upd">0</div>
+              <div class="small fw-bold text-muted text-uppercase">Comuni Assegnati dal Bot</div>
+            </div>
+          </div>
+          
+          <h6 class="fw-bold mb-2 text-dark">Anteprima Assegnazioni (Primi 10)</h6>
+          <div id="geo-rep-preview" class="p-3 bg-light border border-secondary border-opacity-25 rounded small mb-4 text-dark" style="font-family: monospace; max-height: 250px; overflow-y: auto; white-space: pre-wrap;">
+            Caricamento log...
+          </div>
+          
+          <textarea id="geo-rep-full" class="d-none"></textarea>
+          
+          <button class="btn btn-outline-dark fw-bold w-100 py-2" onclick="copyGeoReport()" id="btn-copy-geo">
+            📋 COPIA REPORT COMPLETO NEGLI APPUNTI
+          </button>
+          
+        </div>
+      </div>
+    </div>
+  </div>
+
+
+<div id="action-bar" class="fixed-bottom bg-dark text-white p-3 shadow-lg d-none" style="z-index: 1050; margin-bottom: 25px; border-radius: 15px; width: 94%; left: 3%;">
+  <div class="d-flex justify-content-between align-items-center flex-wrap gap-3">
+    <div>
+      <span class="badge bg-primary fs-6 me-2" id="selected-count">0</span> 
+      <span class="fw-bold">Lead selezionati</span>
+    </div>
+    
+    <div class="d-flex align-items-center gap-2 flex-wrap">
+      <select id="bulk-funnel" class="form-select form-select-sm bg-light text-dark w-auto border-0 fw-bold" style="min-width: 150px;">
+        <option value="">🎯 Cambia Stato...</option>
+        <option value="NUOVO">NUOVO</option>
+        <option value="RITORNO">RITORNO</option>
+        <option value="CONTATTATO">CONTATTATO</option>
+        <option value="NON RISPONDE">NON RISPONDE</option>
+        <option value="IN TRATTATIVA">IN TRATTATIVA</option>
+        <option value="CHIUSO">CHIUSO</option>
+      </select>
+      <button class="btn btn-sm btn-primary fw-bold px-3" onclick="bulkUpdate('funnel')">Applica</button>
+
+      <div class="vr mx-2 bg-white opacity-50"></div>
+
+      <select id="bulk-regione" class="form-select form-select-sm bg-light text-dark w-auto border-0 fw-bold border-bottom border-warning border-3" style="min-width: 160px;">
+        <option value="">📍 Cambia Regione...</option>
+        <option value="ABRUZZO">Abruzzo</option>
+        <option value="BASILICATA">Basilicata</option>
+        <option value="CALABRIA">Calabria</option>
+        <option value="CAMPANIA">Campania</option>
+        <option value="EMILIA-ROMAGNA">Emilia-Romagna</option>
+        <option value="FRIULI-VENEZIA GIULIA">Friuli-Venezia Giulia</option>
+        <option value="LAZIO">Lazio</option>
+        <option value="LIGURIA">Liguria</option>
+        <option value="LOMBARDIA">Lombardia</option>
+        <option value="MARCHE">Marche</option>
+        <option value="MOLISE">Molise</option>
+        <option value="PIEMONTE">Piemonte</option>
+        <option value="PUGLIA">Puglia</option>
+        <option value="SARDEGNA">Sardegna</option>
+        <option value="SICILIA">Sicilia</option>
+        <option value="TOSCANA">Toscana</option>
+        <option value="TRENTINO-ALTO ADIGE">Trentino-Alto Adige</option>
+        <option value="UMBRIA">Umbria</option>
+        <option value="VALLE D'AOSTA">Valle d'Aosta</option>
+        <option value="VENETO">Veneto</option>
+        <option value="N/D">N/D (Sconosciuta)</option>
+      </select>
+      <button class="btn btn-sm btn-warning fw-bold text-dark px-3" onclick="bulkUpdate('regione')">Applica</button>
+
+      <div class="vr mx-2 bg-white opacity-50"></div>
+      
+      <div class="btn-group">
+        <button class="btn btn-sm btn-info fw-bold text-dark px-3" onclick="bulkUpdate('tags')">➕ Aggiungi Tag</button>
+        <button class="btn btn-sm btn-outline-info fw-bold text-light px-3" onclick="bulkUpdate('remove_tags')" title="Rimuovi tag specifici">➖ Rimuovi</button>
+      </div>
+      
+      <button class="btn btn-sm btn-secondary fw-bold px-3 ms-2" id="btn-bulk-archive" onclick="bulkArchiveToggle()">👻 Archivia</button>
+      <button class="btn btn-sm btn-danger fw-bold px-3" onclick="bulkDelete()">🗑️ Elimina</button>
+      
+      <div class="vr mx-2 bg-white opacity-50"></div>
+
+      <button class="btn btn-sm btn-outline-light border-0" onclick="clearSelection()">✖ Annulla</button>
+    </div>
+  </div>
+</div>
+
+
+
+<script>
+
+
+  // --- DOGANA TELEFONICA UNIVERSALE ---
+  function cleanPhoneForWA(tel) {
+    if (!tel) return "";
+    var clean = String(tel).replace(/[^0-9]/g, ''); // Toglie +, spazi, punti e trattini
+    // Se è un numero italiano di 10 cifre che inizia con 3, aggiunge il 39
+    if (clean.startsWith('3') && clean.length === 10) clean = '39' + clean;
+    return clean;
+  }
+
+
+
+  window.globalLeads = []; window.allUniqueTags = new Set(); window.sourcesCache = []; window.macroareeMap = {};
+
+
+
+  // Variabili globali per la paginazione
+window.currentPage = 1;
+window.pageSize = parseInt(localStorage.getItem('crm_page_size')) || 1000;
+
+// Funzione che scatta quando premi "Salva" nelle impostazioni
+function savePageSize() {
+  showLoader("Salvataggio paginazione in corso...");
+  
+  setTimeout(function() {
+    var newSize = document.getElementById('setting-page-size').value;
+    if(newSize < 1) newSize = 1000;
+    window.pageSize = parseInt(newSize);
+    localStorage.setItem('crm_page_size', window.pageSize);
+    window.currentPage = 1; // Riporta alla prima pagina
+    
+    renderLeadsTable(); // Ridisegna la tabella
+    hideLoader();
+    alert("✅ Impostazioni salvate! La dashboard mostrerà " + window.pageSize + " righe alla volta.");
+  }, 600); // Finto caricamento per dare un bel feedback visivo
+}
+
+// Assicuriamoci che l'input mostri il valore corretto all'avvio
+document.addEventListener("DOMContentLoaded", function() {
+  var pageInput = document.getElementById('setting-page-size');
+  if(pageInput) pageInput.value = window.pageSize;
+});
+
+
+
+
+  window.onload = function() {
+    google.script.run.withSuccessHandler(function(res) {
+      document.getElementById('loader').style.display = 'none'; document.getElementById('app').style.display = 'block';
+      document.getElementById('link-db').href = res.dbUrl; 
+      loadConfigs(); loadSourcesList(); loadMacroaree();
+    }).initApp();
+  };
+
+  function switchTab(tabId) {
+    document.querySelectorAll('.view-section').forEach(el => el.style.display = 'none');
+    document.getElementById(tabId).style.display = 'block';
+    document.querySelectorAll('.nav-link').forEach(el => el.classList.remove('active'));
+    event.currentTarget.classList.add('active');
+    
+    // --- 🧹 PULIZIA BARRA FLOTTANTE ---
+    // Svuota le selezioni e nasconde la barra nera ogni volta che si cambia pagina
+    if (typeof clearSelection === 'function') {
+      clearSelection();
+    }
+    // -----------------------------------
+  }
+
+  function showLoader(msg) {
+    document.getElementById('loader-text').innerText = msg;
+    document.getElementById('loader').style.display = 'flex';
+  }
+  function hideLoader() {
+    document.getElementById('loader').style.display = 'none';
+  }
+
+  function updateGeoDict() {
+    var btn = document.getElementById('btn-download-geo'); btn.disabled = true; btn.innerHTML = "Download ISTAT...";
+    google.script.run.withSuccessHandler(function(res) { btn.disabled = false; btn.innerHTML = "📥 Carica Dizionario Comuni";
+      if(res.success) alert(`✅ Caricati ${res.count} record geografici!`); else alert("Errore di Rete: " + res.error);
+    }).downloadComuniItaliani();
+  }
+
+ function loadConfigs() {
+    google.script.run.withSuccessHandler(function(data) {
+      window.appConfigs = {};
+      data.forEach(function(row) { 
+        var key = row[0]; var val = row[1];
+        window.appConfigs[key] = val;
+        var inp = document.getElementById('conf-' + key); if(inp) inp.value = val; 
+        var disp = document.getElementById('disp-' + key); if(disp) disp.innerHTML = val;
+        
+        if(key === 'TPL_HOOKS' && val) {
+          var sel = document.querySelector('#tab-campagne select[onchange*="camp-hook"]');
+          if(sel) { 
+            var arrH = ['<option value="">-- Seleziona un singolo Gancio --</option>']; 
+            var lines = val.split('\n');
+            for(var i=0; i<lines.length; i++) {
+              var line = lines[i].trim();
+              if(line) arrH.push('<option value="' + line + '">' + line + '</option>'); 
+            }
+            sel.innerHTML = arrH.join('');
+          }
+        }
+        if(key === 'TPL_MIDDLES' && val) {
+          var sel = document.querySelector('#tab-campagne select[onchange*="camp-middle"]');
+          if(sel) { 
+            var arrM = ['<option value="">-- Seleziona una Transizione --</option>']; 
+            var lines = val.split('\n');
+            for(var k=0; k<lines.length; k++) {
+              var lineMid = lines[k].trim();
+              if(lineMid) arrM.push('<option value="' + lineMid + '">' + lineMid + '</option>'); 
+            }
+            sel.innerHTML = arrM.join('');
+          }
+        }
+        if(key === 'TPL_ENDINGS' && val) {
+          var sel = document.querySelector('#tab-campagne select[onchange*="camp-ending"]');
+          if(sel) { 
+            var arrE = ['<option value="">-- Seleziona una Domanda --</option>']; 
+            var lines = val.split('\n');
+            for(var j=0; j<lines.length; j++) {
+              var line2 = lines[j].trim();
+              if(line2) arrE.push('<option value="' + line2 + '">' + line2 + '</option>'); 
+            }
+            sel.innerHTML = arrE.join('');
+          }
+        }
+        
+        // --- NUOVO BLOCCO: POPOLA LE TENDINE FUNNEL (MATITA E AZIONI MASSIVE) ---
+        if(key === 'TPL_FUNNELS' && val) {
+          var arrF = [];
+          var linesF = val.split('\n');
+          for(var x=0; x<linesF.length; x++) {
+            var lineF = linesF[x].trim();
+            if(lineF) arrF.push('<option value="' + lineF + '">' + lineF + '</option>'); 
+          }
+          
+          // 1. Aggiorna la tendina nel Modale di Modifica (Matita)
+          var selEdit = document.getElementById('edit-lead-funnel');
+          if(selEdit) selEdit.innerHTML = arrF.join('');
+          
+          // 2. Aggiorna la tendina nella Barra Nera Fluttuante (Bulk Actions)
+          var selBulk = document.getElementById('bulk-funnel');
+          if(selBulk) selBulk.innerHTML = '<option value="">🎯 Cambia Stato...</option>' + arrF.join('');
+          
+          // 3. Popola la tendina per la rimozione nella UI
+          refreshRemoveFunnelUI();
+        }
+        // ------------------------------------------------------------------------
+
+      });
+    }).getConfigData();
+  }
+
+  function insertAllVariants(configKey, textareaId) {
+    if(window.appConfigs && window.appConfigs[configKey]) {
+      var ta = document.getElementById(textareaId);
+      var val = window.appConfigs[configKey].trim();
+      ta.value = ta.value ? ta.value + '\n' + val : val;
+    }
+  }
+
+  function handleImageUpload(input) {
+    if (!input.files || !input.files[0]) return;
+    var file = input.files[0];
+    showLoader("Caricamento immagine su Drive in corso...");
+    
+    var reader = new FileReader();
+    reader.onload = function(e) {
+      var dataURI = e.target.result;
+      google.script.run.withSuccessHandler(function(res) {
+        hideLoader();
+        if (res.success) {
+          document.getElementById('camp-image').value = res.url;
+          document.getElementById('upload-feedback').classList.remove('d-none');
+        } else {
+          alert("Errore durante il caricamento: " + res.error);
+          input.value = "";
+        }
+      }).uploadImageToDrive(dataURI, file.name);
+    };
+    reader.readAsDataURL(file);
+  }
+
+  function saveConfigs() {
+    showLoader("Salvataggio Configurazioni...");
+    var newConf = { 
+      'DELAY_MIN': document.getElementById('conf-DELAY_MIN').value, 
+      'DELAY_MAX': document.getElementById('conf-DELAY_MAX').value, 
+      'PAUSA_BLOCCO': document.getElementById('conf-PAUSA_BLOCCO').value, 
+      'MINUTI_PAUSA': document.getElementById('conf-MINUTI_PAUSA').value, 
+      'LIMITE_GIORNO': document.getElementById('conf-LIMITE_GIORNO').value,
+      'INSTR_DASHBOARD': document.getElementById('conf-INSTR_DASHBOARD').value,
+      'INSTR_LIMITS': document.getElementById('conf-INSTR_LIMITS').value,
+      'AGE_TH_1': document.getElementById('conf-AGE_TH_1').value,
+      'AGE_TH_2': document.getElementById('conf-AGE_TH_2').value,
+      'AGE_TH_3': document.getElementById('conf-AGE_TH_3').value,
+      'AGE_TH_4': document.getElementById('conf-AGE_TH_4').value,
+      'TPL_HOOKS': document.getElementById('conf-TPL_HOOKS').value,
+      'TPL_MIDDLES': document.getElementById('conf-TPL_MIDDLES').value,
+      'TPL_ENDINGS': document.getElementById('conf-TPL_ENDINGS').value,
+      'TPL_FUNNELS': document.getElementById('conf-TPL_FUNNELS').value
+    };
+    google.script.run.withSuccessHandler(() => { hideLoader(); alert("Impostazioni salvate!"); loadConfigs(); }).updateAppConfigs(newConf);
+  }
+
+  const TUTTE_REGIONI = ["ABRUZZO","BASILICATA","CALABRIA","CAMPANIA","EMILIA-ROMAGNA","FRIULI-VENEZIA GIULIA","LAZIO","LIGURIA","LOMBARDIA","MARCHE","MOLISE","PIEMONTE","PUGLIA","SARDEGNA","SICILIA","TOSCANA","TRENTINO-ALTO ADIGE","UMBRIA","VALLE D'AOSTA","VENETO"];
+  
+  function loadMacroaree() {
+    google.script.run.withSuccessHandler(function(data) {
+      window.macroareeMap = {"NORD":[], "CENTRO":[], "SUD":[], "VICINI WILDU":[]};
+      data.forEach(row => { if(window.macroareeMap[row[0]]) window.macroareeMap[row[0]] = row[1] ? row[1].split(',').map(r=>r.trim().toUpperCase()) : []; });
+      renderMacroareeUI();
+      // ECCO LA STAFFETTA: Carica i lead nel CRM SOLO DOPO aver pronto il contenitore Macroaree
+      loadDashboardLeads();
+    }).getMacroareeConfig();
+  }
+
+  function renderMacroareeUI() {
+    var htmlArray = []; var assegnateMain = new Set();
+    ["NORD", "CENTRO", "SUD", "VICINI WILDU"].forEach(macro => {
+      var regs = window.macroareeMap[macro] || [];
+      if(macro !== "VICINI WILDU") regs.forEach(r => assegnateMain.add(r));
+      var tagsHtml = regs.map(r => `<span class="badge bg-secondary me-1 mb-1">${r} <span style="cursor:pointer;" onclick="rimuoviRegioneMacro('${macro}','${r}')">×</span></span>`).join('');
+      var optHtml = `<option value="">+ Aggiungi a ${macro}</option>` + TUTTE_REGIONI.filter(r => !regs.includes(r)).map(r => `<option value="${r}">${r}</option>`).join('');
+      htmlArray.push(`<div class="border rounded p-2 border-info bg-white">
+        <div class="fw-bold text-dark small mb-2">${macro}</div>
+        <div class="mb-2">${tagsHtml}</div>
+        <select class="form-select form-select-sm" onchange="aggiungiRegioneMacro('${macro}', this.value); this.value='';">${optHtml}</select>
+      </div>`);
+    });
+    document.getElementById('macroaree-list').innerHTML = htmlArray.join('');
+    var orfane = TUTTE_REGIONI.filter(r => !assegnateMain.has(r));
+    var warnDiv = document.getElementById('macro-warning');
+    if(orfane.length > 0) { warnDiv.innerHTML = "⚠️ Regioni NON assegnate a Nord/Centro/Sud: " + orfane.join(', '); warnDiv.classList.remove('d-none'); }
+    else { warnDiv.classList.add('d-none'); }
+  }
+
+  function aggiungiRegioneMacro(macro, reg) { if(reg && !window.macroareeMap[macro].includes(reg)) { window.macroareeMap[macro].push(reg); renderMacroareeUI(); } }
+  function rimuoviRegioneMacro(macro, reg) { window.macroareeMap[macro] = window.macroareeMap[macro].filter(r => r !== reg); renderMacroareeUI(); }
+
+  function saveMacroaree() {
+    showLoader("Salvataggio Macroaree in corso...");
+    var btn = document.querySelector('button[onclick="saveMacroaree()"]'); btn.disabled = true; btn.innerText = "Salvataggio...";
+    var macroList = Object.keys(window.macroareeMap).map(m => [m, window.macroareeMap[m].join(', ')]);
+    google.script.run.withSuccessHandler(() => { hideLoader(); btn.disabled = false; btn.innerText = "💾 Salva Aree"; alert("Macroaree salvate!"); loadDashboardLeads(); }).updateMacroareeConfig(macroList);
+  }
+
+  function runSync(label, isSmart) {
+    var target = label || 'ALL';
+    var smartMode = !!isSmart;
+
+    // 🧠 INTELLIGENZA UI: Se il comando è "TUTTI", resettiamo le spunte
+    if (target === 'ALL') {
+      document.querySelectorAll('.sync-checkbox').forEach(cb => cb.checked = false);
+    }
+
+    // Chiude forzatamente il menu a tendina (utile sia per sync mirato che totale)
+    var dropdownToggle = document.querySelector('[data-bs-toggle="dropdown"]');
+    var dropdownInstance = bootstrap.Dropdown.getInstance(dropdownToggle);
+    if (dropdownInstance) dropdownInstance.hide();
+
+    var btn = document.getElementById('btn-sync'); 
+    btn.disabled = true; 
+    
+    var btnText = smartMode ? '🚀 Turbo Scan...' : '🧬 Sync Profondo...';
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> ' + btnText;
+    
+    google.script.run.withSuccessHandler(function(res) {
+      btn.disabled = false; 
+      btn.innerHTML = "🔄 SINCRO-SCAN TUTTI"; 
+      
+      if(res.success) {
+        // Popola i contatori giganti
+        document.getElementById('sync-rep-new').innerText = res.newCount || 0;
+        document.getElementById('sync-rep-upd').innerText = res.updatedCount || 0;
+        
+        // Gestione del Log (con limite di 10 nell'anteprima)
+        var logArray = res.logDetails || ["Nessun dettaglio ricevuto dal server."];
+        var previewText = logArray.slice(0, 10).join("\n");
+        if(logArray.length > 10) {
+          previewText += `\n\n... [prosegue per altri ${logArray.length - 10} contatti] ...`;
+        }
+        
+        // Inserisce i testi
+        document.getElementById('sync-rep-preview').innerText = previewText || "Nessuna operazione effettuata.";
+        
+        // Formatta il testo completo per la clipboard
+        var dataOggi = new Date().toLocaleString();
+        var fullText = `=== REPORT SINCRO-SCAN WILDU CRM ===\nData: ${dataOggi}\nNuovi: ${res.newCount} | Aggiornati: ${res.updatedCount}\n\nDETTAGLIO OPERAZIONI:\n`;
+        fullText += logArray.join("\n");
+        document.getElementById('sync-rep-full').value = fullText;
+        
+        // Mostra il modale e aggiorna la tabella in background
+        var syncModal = new bootstrap.Modal(document.getElementById('modalSyncReport'));
+        syncModal.show();
+        
+        // Reset tasto copia
+        document.getElementById('btn-copy-sync').innerText = "📋 COPIA REPORT COMPLETO NEGLI APPUNTI";
+        document.getElementById('btn-copy-sync').classList.replace("btn-success", "btn-outline-primary");
+        
+        loadDashboardLeads();
+      } else {
+        alert("Errore Server durante il Sync: " + res.error);
+      }
+    }).runSincroScan(target, smartMode);
+  }
+
+  // Funzione per il tasto copia
+  function copySyncReport() {
+    var copyText = document.getElementById("sync-rep-full");
+    copyText.classList.remove('d-none'); // Mostra temporaneamente per copiare
+    copyText.select();
+    copyText.setSelectionRange(0, 99999); // Per dispositivi mobili
+    navigator.clipboard.writeText(copyText.value).then(function() {
+      var btn = document.getElementById('btn-copy-sync');
+      btn.innerText = "✅ COPIATO CON SUCCESSO!";
+      btn.classList.replace("btn-outline-primary", "btn-success");
+      copyText.classList.add('d-none'); // Rinasconde
+    });
+  }
+
+  // Variabili globali per accumulare i dati tra un ciclo e l'altro del Bot
+  window.geoLogsAccumulator = [];
+  window.geoUpdatedCount = 0;
+
+  function runGeoBatch() {
+    var btn = document.getElementById('btn-geo'); 
+    btn.disabled = true; 
+    if(window.geoLogsAccumulator.length === 0) btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Analisi Bot...';
+    
+    google.script.run.withSuccessHandler(function(res) {
+      if(res.success) {
+        // Raccoglie i log di questo specifico blocco
+        if(res.logDetails && res.logDetails.length > 0) {
+          window.geoLogsAccumulator = window.geoLogsAccumulator.concat(res.logDetails);
+        }
+        if(res.updatedCount) window.geoUpdatedCount += res.updatedCount;
+
+        if(res.remaining > 0) {
+          btn.innerHTML = `<span class="spinner-border spinner-border-sm"></span> Analizzati ${res.processed}. Ne mancano ${res.remaining}...`;
+          setTimeout(runGeoBatch, 1000); // Rilancia il ciclo
+        } else {
+          // HA FINITO TUTTI I BLOCCHI! Mostra il Report
+          btn.disabled = false; btn.innerHTML = "🧠 FORZA ANALISI GEO";
+          
+          document.getElementById('geo-rep-upd').innerText = window.geoUpdatedCount;
+          var previewText = window.geoLogsAccumulator.slice(0, 10).join("\n");
+          if(window.geoLogsAccumulator.length > 10) {
+            previewText += `\n\n... [prosegue per altri ${window.geoLogsAccumulator.length - 10} contatti] ...`;
+          }
+          document.getElementById('geo-rep-preview').innerText = previewText || "Nessuna nuova regione trovata in questa sessione.";
+          
+          var dataOggi = new Date().toLocaleString();
+          var fullText = `=== REPORT ANALISI GEO WILDU CRM ===\nData: ${dataOggi}\nComuni Assegnati: ${window.geoUpdatedCount}\n\nDETTAGLIO OPERAZIONI:\n`;
+          fullText += window.geoLogsAccumulator.join("\n");
+          document.getElementById('geo-rep-full').value = fullText;
+          
+          var geoModal = new bootstrap.Modal(document.getElementById('modalGeoReport'));
+          geoModal.show();
+          
+          // Reset tasto copia e variabili globali
+          document.getElementById('btn-copy-geo').innerText = "📋 COPIA REPORT COMPLETO NEGLI APPUNTI";
+          document.getElementById('btn-copy-geo').classList.replace("btn-success", "btn-outline-dark");
+          
+          window.geoLogsAccumulator = [];
+          window.geoUpdatedCount = 0;
+          
+          loadDashboardLeads();
+        }
+      } else {
+        btn.disabled = false; btn.innerHTML = "🧠 FORZA ANALISI GEO";
+        alert("Errore Server: " + res.error);
+      }
+    }).runGeoAnalysisBatch();
+  }
+
+  // Funzione per il tasto copia del Geo Report
+  function copyGeoReport() {
+    var copyText = document.getElementById("geo-rep-full");
+    copyText.classList.remove('d-none');
+    copyText.select();
+    copyText.setSelectionRange(0, 99999);
+    navigator.clipboard.writeText(copyText.value).then(function() {
+      var btn = document.getElementById('btn-copy-geo');
+      btn.innerText = "✅ COPIATO CON SUCCESSO!";
+      btn.classList.replace("btn-outline-dark", "btn-success");
+      copyText.classList.add('d-none');
+    });
+  }
+
+function loadDashboardLeads() {
+    document.getElementById('leads-body').innerHTML = '<tr><td colspan="6" class="text-center py-5"><span class="spinner-border spinner-border-sm"></span> Caricamento...</td></tr>';
+    google.script.run.withSuccessHandler(function(data) {
+      if(!data || data.length <= 1) { document.getElementById('leads-body').innerHTML = '<tr><td colspan="6" class="text-center py-5">Nessun lead trovato.</td></tr>'; return; }
+      
+      window.idxAnnoNascita = data[0].indexOf("ANNO_NASCITA");
+      window.idxDesideri = data[0].indexOf("DESIDERI");
+      window.idxStoricoDesideri = data[0].indexOf("STORICO_DESIDERI");
+      window.globalLeads = data.slice(1).reverse();
+      var funnels = new Set(); var regioniUniche = new Set(); window.allUniqueTags.clear();
+      
+      window.tagCounts = {};
+      window.funnelCounts = {}; // Aggiunto per contare i funnel
+      window.macroCounts = {"NORD":0, "CENTRO":0, "SUD":0, "VICINI WILDU":0};
+      window.regionCounts = {};
+      window.ageCounts = {"CHILD":0, "YOUNG":0, "ADULT":0, "MAN":0, "OLD":0, "N/D":0};
+      window.desideriCounts = {}; 
+      var currentYear = new Date().getFullYear();
+      var safeCfg = window.appConfigs || {};
+      var th1 = parseInt(safeCfg['AGE_TH_1']) || 17;
+      var th2 = parseInt(safeCfg['AGE_TH_2']) || 30;
+      var th3 = parseInt(safeCfg['AGE_TH_3']) || 45;
+      var th4 = parseInt(safeCfg['AGE_TH_4']) || 54;
+
+      // --- 🛡️ INIEZIONE VISIVA SOGLIE NELLE PILLOLE ---
+      if(document.getElementById('th-c')) {
+        document.getElementById('th-c').innerText = "0-" + th1;
+        document.getElementById('th-y').innerText = (th1 + 1) + "-" + th2;
+        document.getElementById('th-a').innerText = (th2 + 1) + "-" + th3;
+        document.getElementById('th-m').innerText = (th3 + 1) + "-" + th4;
+        document.getElementById('th-o').innerText = ">" + th4;
+      }
+
+
+      window.globalLeads.forEach(row => { 
+        // --- 🛑 IL CASELLO GLOBALE ANTI-ARCHIVIATI ---
+        // Se un lead è archiviato, lo ignoriamo completamente da TUTTI i conteggi globali
+        var tagsStr = row[7] ? String(row[7]).toUpperCase() : "";
+        if (tagsStr.indexOf("[ARCHIVIATO]") > -1) return;
+        // ---------------------------------------------
+
+        // 1. Funnels
+        if(row[6]) {
+          var fVal = row[6].trim();
+          if (fVal) {
+            funnels.add(fVal);
+            window.funnelCounts[fVal] = (window.funnelCounts[fVal] || 0) + 1;
+          }
+        } 
+        
+        // 2. Tags
+        if(row[7]) row[7].split(',').forEach(t => { 
+          var clTag = t.trim();
+          if(clTag) { 
+            window.allUniqueTags.add(clTag); 
+            window.tagCounts[clTag] = (window.tagCounts[clTag] || 0) + 1;
+          } 
+        }); 
+        
+        // 3. Regioni e Macroaree (CON FIX MAIUSCOLE, NO-BREAK E MAPPATO)
+        var rRaw = String(row[9] || 'N/D').toUpperCase();
+        if (rRaw.indexOf("(AUTO:") > -1) rRaw = rRaw.split("(AUTO:")[0].trim();
+        if (rRaw.indexOf("(MAPPATO)") > -1) rRaw = rRaw.replace("(MAPPATO)", "").trim();
+        if (rRaw.indexOf("N/D") > -1 || rRaw === "") rRaw = "N/D";
+        
+        var cleanR = rRaw.trim();
+        if (cleanR !== "N/D") {
+          regioniUniche.add(cleanR);
+          window.regionCounts[cleanR] = (window.regionCounts[cleanR] || 0) + 1;
+          
+          for (let m in window.macroareeMap) {
+            if (window.macroareeMap[m].map(x => x.toUpperCase()).includes(cleanR)) {
+              window.macroCounts[m]++;
+              // Nessun break: la Toscana ora va sia in Centro che in Vicini Wildu
+            }
+          }
+        } else {
+          window.regionCounts["N/D"] = (window.regionCounts["N/D"] || 0) + 1;
+        }
+
+        // 4. Calcolo fasce età
+        var anno = window.idxAnnoNascita > -1 ? row[window.idxAnnoNascita] : "";
+        var ageGrp = "N/D";
+        if (anno && !isNaN(anno)) {
+          var age = currentYear - parseInt(anno);
+          if(age <= th1) ageGrp = "CHILD";
+          else if(age <= th2) ageGrp = "YOUNG";
+          else if(age <= th3) ageGrp = "ADULT";
+          else if(age <= th4) ageGrp = "MAN";
+          else ageGrp = "OLD";
+        }
+        window.ageCounts[ageGrp]++;
+      // 5. Conta Desideri
+        var strDes = window.idxDesideri > -1 ? String(row[window.idxDesideri] || "").trim().toUpperCase() : "";
+        if (strDes) {
+          strDes.split(',').forEach(d => {
+            var cd = d.trim();
+            if(cd) window.desideriCounts[cd] = (window.desideriCounts[cd] || 0) + 1;
+          });
+        }
+      });
+
+      // --- AGGIORNAMENTO VISIVO BARRA RIEPILOGO ---
+      if(document.getElementById('cnt-child')) {
+        document.getElementById('cnt-child').innerText = window.ageCounts["CHILD"];
+        document.getElementById('cnt-young').innerText = window.ageCounts["YOUNG"];
+        document.getElementById('cnt-adult').innerText = window.ageCounts["ADULT"];
+        document.getElementById('cnt-man').innerText = window.ageCounts["MAN"];
+        document.getElementById('cnt-old').innerText = window.ageCounts["OLD"];
+        document.getElementById('cnt-nd').innerText = window.ageCounts["N/D"];
+      }
+
+      // --- INIEZIONE NUMERI NEI MENU DELLA DASHBOARD ---
+      
+      // Funnel
+      var selFList = ['<option value="">Tutti i Funnel</option>'];
+      funnels.forEach(f => selFList.push(`<option value="${f}">${f} (${window.funnelCounts[f]})</option>`)); 
+      var selF = document.getElementById('filter-funnel');
+      if(selF) { var valF = selF.value; selF.innerHTML = selFList.join(''); selF.value = valF; }
+      
+      // Regione
+      var selRList = ['<option value="">Filtra per Regione</option>']; 
+      var regArray = Array.from(regioniUniche).sort(); 
+      regArray.forEach(r => selRList.push(`<option value="${r}">${r} (${window.regionCounts[r]})</option>`)); 
+      selRList.push('<option disabled>──────────</option><option value="N/D">N/D (Senza Regione) (' + (window.regionCounts["N/D"] || 0) + ')</option><option value="MAPS">🗺️ Solo "Cerca su Maps"</option>');
+      var selR = document.getElementById('filter-regione');
+      if(selR) { var valR = selR.value; selR.innerHTML = selRList.join(''); selR.value = valR; }
+      
+      // Età
+      var selEList = [
+        '<option value="">Tutte le Età</option>',
+        `<option value="CHILD">👶 Child (${window.ageCounts["CHILD"] || 0})</option>`,
+        `<option value="YOUNG">👦 Young (${window.ageCounts["YOUNG"] || 0})</option>`,
+        `<option value="ADULT">👱 Adult (${window.ageCounts["ADULT"] || 0})</option>`,
+        `<option value="MAN">👨 Man (${window.ageCounts["MAN"] || 0})</option>`,
+        `<option value="OLD">👴 Old (${window.ageCounts["OLD"] || 0})</option>`,
+        `<option value="N/D">❓ Sconosciuta (${window.ageCounts["N/D"] || 0})</option>`
+      ];
+      var selE = document.getElementById('filter-eta');
+      if(selE) { var valE = selE.value; selE.innerHTML = selEList.join(''); selE.value = valE; }
+
+      // Macroarea
+      var selMList = ['<option value="">Macroarea</option>'];
+      ["NORD", "CENTRO", "SUD", "VICINI WILDU"].forEach(m => {
+         selMList.push(`<option value="${m}">${m} (${window.macroCounts[m] || 0})</option>`);
+      });
+      var selM = document.getElementById('filter-macroarea');
+      if(selM) { var valM = selM.value; selM.innerHTML = selMList.join(''); selM.value = valM; }
+      
+      renderLeadsTable();
+      fillCampagneFilters();
+    }).getShadowLeads();
+  }
+
+  // === AZZERA FILTRI DASHBOARD ===
+  function resetDashboardFilters() {
+    // 1. Svuota tutti i campi e tendine
+    document.getElementById('filter-text').value = '';
+    document.getElementById('filter-funnel').value = '';
+    document.getElementById('filter-eta').value = '';
+    document.getElementById('filter-macroarea').value = '';
+    document.getElementById('filter-regione').value = '';
+    
+    // 2. Spegne la stanza segreta (se accesa) e resetta il tasto della barra
+    var toggleArchiviati = document.getElementById('toggle-archiviati');
+    if (toggleArchiviati) {
+      toggleArchiviati.checked = false;
+      var btn = document.getElementById('btn-bulk-archive');
+      if (btn) btn.innerHTML = '👻 Archivia';
+    }
+    
+    // 3. Ridisegna la tabella pulita
+    renderLeadsTable();
+  }
+
+  function renderLeadsTable() {
+    var tbody = document.getElementById('leads-body');
+    var searchTerms = document.getElementById('filter-text').value.toLowerCase().split(',').map(t => t.trim()).filter(t => t.length > 0);
+    var funnelFilt = document.getElementById('filter-funnel').value, regionFilt = document.getElementById('filter-regione').value, macroFilt = document.getElementById('filter-macroarea').value, etaFilt = document.getElementById('filter-eta').value;
+    var htmlArray = []; var count = 0;
+
+    // Recupero lo stato della Stanza Segreta (fuori dal ciclo per massima velocità)
+    var showArchivedOnly = document.getElementById('toggle-archiviati') ? document.getElementById('toggle-archiviati').checked : false;
+
+    window.globalLeads.forEach((row, rowIndex) => {
+      var nome = row[0], tel = row[1], sorg = row[2], note = row[5], funnel = row[6], tags = row[7], mail = row[8], reg = row[9] || 'N/D';
+      var annoNascita = window.idxAnnoNascita > -1 ? row[window.idxAnnoNascita] : "";
+      
+      // --- 🛑 IL CASELLO (Ghost Protocol) ---
+      var isArchived = (tags && tags.indexOf("[ARCHIVIATO]") > -1);
+      if (showArchivedOnly && !isArchived) return; // Stanza Segreta attiva: ignora chi non è archiviato
+      if (!showArchivedOnly && isArchived) return; // Vista Normale: ignora chi è archiviato
+      // --------------------------------------
+
+      var fullText = (nome + tel + sorg + note + tags + mail).toLowerCase(); 
+      if(searchTerms.length > 0 && !searchTerms.some(t => fullText.indexOf(t) > -1)) return;
+      if(funnelFilt && funnel !== funnelFilt) return;
+
+      // === LOGICA ETÀ E FASCE (Invariata) ===
+      var ageGroup = "N/D"; var ageBadge = "";
+      if (annoNascita && !isNaN(annoNascita)) {
+        var currentAge = new Date().getFullYear() - parseInt(annoNascita);
+        var safeCfg = window.appConfigs || {};
+        var th1 = parseInt(safeCfg['AGE_TH_1']) || 17;
+        var th2 = parseInt(safeCfg['AGE_TH_2']) || 30;
+        var th3 = parseInt(safeCfg['AGE_TH_3']) || 45;
+        var th4 = parseInt(safeCfg['AGE_TH_4']) || 54;
+        if(currentAge <= th1) ageGroup = "CHILD";
+        else if(currentAge <= th2) ageGroup = "YOUNG";
+        else if(currentAge <= th3) ageGroup = "ADULT";
+        else if(currentAge <= th4) ageGroup = "MAN";
+        else ageGroup = "OLD";
+        var colorMap = {"CHILD":"success", "YOUNG":"primary", "ADULT":"info", "MAN":"warning", "OLD":"secondary"};
+        ageBadge = `<span class="badge bg-${colorMap[ageGroup]} ms-2">${currentAge} anni</span>`;
+      }
+      if(etaFilt && etaFilt !== ageGroup) return;
+
+      // === LOGICA REGIONE (Invariata) ===
+      var cleanReg = reg; var regBadge = "";
+      var isAuto = reg.indexOf("(Auto") > -1;
+      var isMappato = reg.indexOf("(Mappato)") > -1;
+      var isTentativo = reg.indexOf("N/D (Tentativo:") > -1 || reg.indexOf("N/D (Fallito:") > -1;
+
+      if (isAuto) {
+        var regexMatch = reg.match(/(.*?)\s*\(Auto:\s*(.*?)\)/); var matchWord = regexMatch ? regexMatch[2].trim() : "Sconosciuto";
+        cleanReg = regexMatch ? regexMatch[1].trim() : reg.replace("(Auto)", "").trim();
+        regBadge = `<div class="auto-regione">📍 ${cleanReg} <small class="text-muted fw-normal">(Bot)</small></div>
+          <div class="mt-2"><button class="btn btn-sm text-primary p-0 m-0 fw-bold border-0 bg-transparent" style="font-size: 0.75rem;" onclick="document.getElementById('bot-${rowIndex}').classList.toggle('d-none')">👁️ Origine Dato</button>
+          <div id="bot-${rowIndex}" class="d-none text-muted mt-1 p-2 bg-white border border-warning rounded shadow-sm" style="font-size: 0.75rem; line-height: 1.2;">Tag letto:<br><b class="text-dark">${matchWord}</b></div></div>`;
+      } else if (isMappato) {
+        cleanReg = reg.replace("(Mappato)", "").trim();
+        regBadge = `<div class="fw-bold text-dark">📍 ${cleanReg} <span class="badge bg-light text-secondary border ms-1" style="font-size:0.6rem;">Meta</span></div>`;
+      } else if (isTentativo) {
+        var parolaStranaMatch = reg.match(/N\/D\s*\((Tentativo|Fallito):\s*(.*?)\)/); var parolaStrana = parolaStranaMatch ? parolaStranaMatch[2].trim() : "";
+        cleanReg = "N/D"; var mapUrl = "https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent(parolaStrana);
+        regBadge = `<div class="fw-bold text-muted mb-1">N/D</div><a href="${mapUrl}" target="_blank" class="btn btn-sm btn-outline-primary" style="font-size: 0.7rem; padding: 2px 5px;">🗺️ Cerca su Maps</a><div class="small text-muted mt-1 text-truncate" style="font-size: 0.65rem; max-width: 140px;">Testo: ${parolaStrana}</div>`;
+      } else if (reg === "N/D" || reg === "") {
+        cleanReg = "N/D"; regBadge = `<div class="fw-bold text-muted">N/D</div>`;
+      } else {
+        cleanReg = reg.trim(); regBadge = `<div class="fw-bold text-dark">📍 ${cleanReg}</div>`;
+      }
+
+      if(regionFilt === "MAPS") { 
+        if(!isTentativo) return; 
+      } else if(regionFilt && cleanReg.toUpperCase() !== regionFilt.toUpperCase()) { 
+        return; 
+      }
+      if(macroFilt) { 
+        var regsInMacro = window.macroareeMap[macroFilt] || []; 
+        if(!regsInMacro.includes(cleanReg.toUpperCase())) return; 
+      }
+      
+      count++;
+      
+      // --- LOGICA DESIDERI E TAGS (Invariata) ---
+      var strDes = window.idxDesideri > -1 ? String(row[window.idxDesideri] || "").trim() : "";
+      var strStorico = window.idxStoricoDesideri > -1 ? String(row[window.idxStoricoDesideri] || "").trim() : "";
+      var desBadge = "";
+      if (strDes) {
+        strDes.split(',').forEach(d => { if(d.trim()) desBadge += `<span class="badge bg-success me-1 mb-1">⭐ ${d.trim()}</span>`; });
+        if (strStorico) desBadge += `<div class="mt-1" style="font-size:0.65rem; color:#d97706; line-height:1.1;"><i>${strStorico}</i></div>`;
+      }
+      var tagsHtml = tags ? tags.split(',').map(t => `<span class="badge tag-badge me-1">${t.trim()}</span>`).join('') : '';
+
+      var waTel = cleanPhoneForWA(tel);
+
+      // 🛑 MODIFICA QUI: Aggiunta colonna Checkbox (Usa waTel come ID)
+      htmlArray.push(`<tr>
+        <td class="align-middle">
+           <input type="checkbox" class="lead-checkbox form-check-input border-secondary" data-phone="${waTel}" onchange="updateActionBar()">
+        </td>
+        <td><div class="fw-bold">${nome}${ageBadge}</div><div class="small text-muted">${tel}</div></td>
+        <td><div class="small user-select-all" style="word-break: break-all;">${mail}</div><div class="badge bg-secondary opacity-75 mt-1" title="${sorg}">${sorg}</div></td>
+        <td class="bg-warning bg-opacity-10 align-top">${regBadge}</td>
+        <td><div class="fw-bold text-primary">${funnel}</div><div class="small text-muted">${row[3]}</div></td>
+        <td style="max-width:220px;">${desBadge}${tagsHtml}${note ? `<div class="mt-1 small text-primary fst-italic border-start border-2 border-primary ps-2">"${note}"</div>` : ''}</td>
+        <td class="text-end" style="min-width: 110px;">
+          <div class="d-flex justify-content-end flex-nowrap">
+            <button onclick="sendWA('${waTel}', '${nome.replace(/'/g, "\\'")}')" class="btn btn-sm btn-success fw-bold me-1" title="Contatta su WhatsApp">💬</button>
+            <button type="button" class="btn btn-sm btn-light border fw-bold" onclick="openEditByIndex(${rowIndex})">✏️</button>
+          </div>
+        </td>
+      </tr>`);
+    });
+
+    // === INIZIO LOGICA PAGINAZIONE ===
+    var totalFiltered = htmlArray.length;
+    var totalPages = Math.ceil(totalFiltered / window.pageSize);
+    
+    if (window.currentPage > totalPages && totalPages > 0) {
+      window.currentPage = totalPages;
+    }
+
+    var startIdx = (window.currentPage - 1) * window.pageSize;
+    var endIdx = startIdx + window.pageSize;
+    var pageHtml = htmlArray.slice(startIdx, endIdx);
+
+    // 🛑 MODIFICA QUI: Aumentato colspan a 7 perché abbiamo aggiunto la colonna checkbox
+    tbody.innerHTML = pageHtml.length > 0 ? pageHtml.join('') : '<tr><td colspan="7" class="text-center py-5 text-muted">Nessun lead trovato con questi filtri.</td></tr>';
+    
+    document.getElementById('lead-count').innerText = count;
+    disegnaBottoniPaginazione(totalFiltered, totalPages);
+    
+    // Reset della barra azioni se ricarichiamo la tabella
+    updateActionBar();
+}
+  function openEditByIndex(index) {
+    var row = window.globalLeads[index];
+    if (!row) return;
+
+    var nome = row[0], tel = row[1], note = row[5], funnel = row[6], tags = row[7], reg = row[9] || 'N/D';
+    var annoNascita = window.idxAnnoNascita > -1 ? row[window.idxAnnoNascita] : "";
+    var desideri = window.idxDesideri > -1 ? row[window.idxDesideri] : "";
+
+    // SPOGLIARE IL DATO DALLE FIRME DEL BOT PER MOSTRARLO PURO NELLA MATITA
+    var cleanRegForEdit = reg.replace(/\s*\(.*?\)/g, '').trim().toUpperCase();
+    if (cleanRegForEdit === 'N/D') cleanRegForEdit = '';
+
+    document.getElementById('edit-lead-phone').value = tel;
+    document.getElementById('edit-lead-name').innerText = "👤 " + nome;
+    document.getElementById('edit-lead-funnel').value = funnel;
+    document.getElementById('edit-lead-tags').value = tags;
+    document.getElementById('edit-lead-note').value = note;
+    
+    // Assicuriamoci che se il funnel del lead non è nella lista, venga aggiunto temporaneamente per non perderlo!
+    var funnelDropdown = document.getElementById('edit-lead-funnel');
+    var found = false;
+    for(var i=0; i<funnelDropdown.options.length; i++) { if(funnelDropdown.options[i].value === funnel) found = true; }
+    if(!found && funnel) { var opt = document.createElement('option'); opt.value = funnel; opt.text = funnel + " (Storico)"; funnelDropdown.appendChild(opt); }
+    document.getElementById('edit-lead-regione').value = cleanRegForEdit; // Seleziona il menu a tendina esatto
+    document.getElementById('edit-lead-eta').value = annoNascita;
+    document.getElementById('edit-lead-desideri').value = desideri;
+
+    new bootstrap.Modal(document.getElementById('modalEditLead')).show();
+  }
+
+  function openEditModal(tel, n, f, t, nt, r, eta, des) {
+    document.getElementById('edit-lead-phone').value = tel; document.getElementById('edit-lead-name').innerText = "👤 " + decodeURIComponent(n);
+    document.getElementById('edit-lead-funnel').value = decodeURIComponent(f); document.getElementById('edit-lead-tags').value = decodeURIComponent(t);
+    document.getElementById('edit-lead-note').value = decodeURIComponent(nt); document.getElementById('edit-lead-regione').value = decodeURIComponent(r === 'N/D' ? '' : r);
+    document.getElementById('edit-lead-eta').value = eta || ""; 
+    document.getElementById('edit-lead-desideri').value = des ? decodeURIComponent(des) : "";
+    new bootstrap.Modal(document.getElementById('modalEditLead')).show();
+  }
+
+ function saveLeadEdit() {
+    showLoader("Aggiornamento Contatto...");
+    var tel = document.getElementById('edit-lead-phone').value; 
+    var btn = document.querySelector('#modalEditLead .btn-primary'); 
+    btn.disabled = true; 
+    btn.innerHTML = "Salvataggio...";
+    
+    // 🛡️ Parser Età con Scudo "Viaggiatore nel Tempo"
+    var rawEta = document.getElementById('edit-lead-eta').value.trim();
+    var parsedYear = "";
+    var currentY = new Date().getFullYear();
+    
+    if (rawEta) {
+      var num = parseInt(rawEta);
+      if (!isNaN(num)) {
+        if (num > 0 && num <= 120) { 
+          parsedYear = currentY - num; // È un'età (es. 45)
+        } else if (num > 1900 && num <= currentY) { 
+          parsedYear = num; // È un anno valido (es. 1980)
+        } else {
+          // BLOCCO DI SICUREZZA
+          alert("⚠️ Valore Età/Anno non valido!\nInserisci un'età reale (es. 45) o un anno compreso tra 1900 e " + currentY + ".");
+          btn.disabled = false; btn.innerHTML = "💾 Aggiorna Database"; hideLoader();
+          return; // Ferma il salvataggio!
+        }
+      }
+    }
+
+    // 🎒 La Valigetta con tutti i dati
+    var payload = {
+      "ANNO_NASCITA": parsedYear,
+      "REGIONE": document.getElementById('edit-lead-regione').value,
+      "NOTE": document.getElementById('edit-lead-note').value,
+      "TAGS": document.getElementById('edit-lead-tags').value,
+      "FUNNEL": document.getElementById('edit-lead-funnel').value,
+      "DESIDERI": document.getElementById('edit-lead-desideri').value.toUpperCase()
+    };
+
+    // 🚀 L'invio singolo al nuovo motore Turbo
+    google.script.run
+      .withSuccessHandler(function(res) {
+        hideLoader(); 
+        btn.disabled = false; 
+        btn.innerHTML = "💾 Aggiorna Database"; 
+        
+        if (res && res.success) {
+          bootstrap.Modal.getInstance(document.getElementById('modalEditLead')).hide(); 
+          loadDashboardLeads(); // Rinfresca la tabella
+        } else {
+          alert("❌ Errore Server: " + (res ? res.error : "Nessuna risposta"));
+        }
+      })
+      .withFailureHandler(function(err) {
+        hideLoader(); 
+        btn.disabled = false; 
+        btn.innerHTML = "💾 Aggiorna Database"; 
+        alert("❌ Errore di Rete: " + err.message);
+      })
+      .updateLeadTurbo(tel, payload); 
+  }
+
+  // NUOVA FUNZIONE: Conferma ed elimina il lead
+  function deleteLeadAction() {
+    var tel = document.getElementById('edit-lead-phone').value;
+    var nome = document.getElementById('edit-lead-name').innerText.replace("👤 ", "");
+    
+    if(confirm("⚠️ ATTENZIONE!\nVuoi eliminare definitivamente " + nome + " dal tuo CRM?\nL'azione è irreversibile e non riceverà più messaggi.")) {
+      bootstrap.Modal.getInstance(document.getElementById('modalEditLead')).hide();
+      showLoader("Eliminazione in corso...");
+      
+      google.script.run.withSuccessHandler(function(res) {
+        hideLoader();
+        if(res.success) {
+          alert("🗑️ Contatto eliminato con successo.");
+          loadDashboardLeads(); // Ricarica la tabella pulita
+        } else {
+          alert("Errore durante l'eliminazione: " + res.error);
+        }
+      }).deleteLeadManual(tel);
+    }
+  }
+
+  function loadSourcesList() {
+    google.script.run.withSuccessHandler(function(data) {
+      window.sourcesCache = data; 
+      var tbody = document.getElementById('sources-list');
+      if(!data || data.length === 0) { 
+        tbody.innerHTML = '<tr><td colspan="4" class="text-center">Nessuna sorgente.</td></tr>'; 
+        return; 
+      }
+      var htmlArray = [];
+      data.forEach((row, idx) => {
+        var isSkipGeo = row[9] === "SI"; 
+        var geoBadge = isSkipGeo ? '<span class="badge bg-danger">Geo Bot Spento 🚫</span>' : '<span class="badge bg-success">Geo Bot Attivo 🧠</span>';
+        
+        // Costruiamo il Link dinamicamente usando l'ID del foglio (row[0])
+        var sheetUrl = "https://docs.google.com/spreadsheets/d/" + row[0];
+
+        htmlArray.push(`<tr>
+          <td class="fw-bold">${row[6]}</td>
+          <td><span class="badge bg-secondary">${row[1]}</span></td>
+          <td>${geoBadge}</td>
+          <td class="text-end text-nowrap">
+            <a href="${sheetUrl}" target="_blank" class="btn btn-sm btn-outline-info me-1 fw-bold" title="Apri Foglio Meta Originale">↗️ Apri</a>
+            <button class="btn btn-sm btn-outline-dark me-1" title="Bonifica Dati" onclick="openCleanupModal(${idx}, '${row[6]}')">🧹</button>
+            <button class="btn btn-sm btn-outline-primary me-1" title="Modifica Mappature" onclick="editSourceUI(${idx})">✏️</button>
+            <button class="btn btn-sm btn-outline-danger" title="Scollega Foglio" onclick="deleteSource(${idx})">🗑️</button>
+          </td></tr>`);
+      });
+      tbody.innerHTML = htmlArray.join('');
+    }).getSavedSources();
+  }
+
+
+  function deleteSource(idx) { if(confirm("Scollegare sorgente?")) { google.script.run.withSuccessHandler(loadSourcesList).removeSourceAt(idx); } }
+
+  function openSourceModal() {
+    document.getElementById('source-modal-title').innerText = "🔗 Collega Nuovo Foglio";
+    document.getElementById('source-row-index').value = ""; document.getElementById('source-url').value = ""; document.getElementById('step-1').style.display = 'block'; document.getElementById('step-2').style.display = 'none';
+    new bootstrap.Modal(document.getElementById('modalAddSource')).show();
+  }
+
+  function editSourceUI(idx) {
+    var row = window.sourcesCache[idx];
+    document.getElementById('source-modal-title').innerText = "✏️ Modifica Sorgente";
+    document.getElementById('source-row-index').value = idx; document.getElementById('source-url').value = "https://docs.google.com/spreadsheets/d/" + row[0];
+    document.getElementById('step-1').style.display = 'block'; document.getElementById('step-2').style.display = 'none';
+    new bootstrap.Modal(document.getElementById('modalAddSource')).show();
+    setTimeout(analyzeSource, 200); 
+  }
+
+  window.cachedHeadersMap = {}; 
+  function analyzeSource() {
+    var btn = document.querySelector('#step-1 button'); btn.innerHTML = 'Analisi in corso... ⏳'; btn.disabled = true;
+    var url = document.getElementById('source-url').value;
+    
+    google.script.run.withSuccessHandler(function(res) {
+      btn.innerHTML = 'Analizza e Leggi Dati 🔍'; btn.disabled = false;
+      if(res.success) {
+        document.getElementById('step-1').style.display = 'none'; document.getElementById('step-2').style.display = 'block'; document.getElementById('source-id-hidden').value = res.id; window.cachedHeadersMap = res.headersMap;
+        var sel = document.getElementById('source-tab'); 
+        var tabsList = []; res.tabs.forEach(t => tabsList.push(`<option value="${t}">${t}</option>`)); 
+        sel.innerHTML = tabsList.join(''); sel.onchange = updateDropdowns; 
+        
+        var idx = document.getElementById('source-row-index').value;
+        if(idx !== "") {
+          var row = window.sourcesCache[idx];
+          sel.value = row[1]; document.getElementById('source-header-row').value = parseInt(row[5]); document.getElementById('source-label').value = row[6]; document.getElementById('source-skip-geo').checked = (row[9] === "SI");
+        }
+        updateDropdowns();
+      } else { alert("Errore di collegamento: " + res.error + "\n\nVerifica che il link del foglio sia corretto e che tu abbia i permessi per leggerlo."); }
+    }).fetchExternalSheetInfo(url);
+  }
+
+  function updateDropdowns() {
+    var tab = document.getElementById('source-tab').value; var rowIdx = parseInt(document.getElementById('source-header-row').value) - 1; if(rowIdx < 0) rowIdx = 0;
+    var headers = (window.cachedHeadersMap[tab] || [])[rowIdx] || [];
+    var optList = ['<option value="">-- Seleziona --</option>']; var tagsList = [];
+    headers.forEach((h, i) => { if(h) { optList.push(`<option value="${h}">${h}</option>`); tagsList.push(`<div class="form-check"><input class="form-check-input tag-cb" type="checkbox" value="${h}" id="tcb${i}"><label class="form-check-label small" for="tcb${i}">${h}</label></div>`); }});
+    var finalOpt = optList.join(''); var finalTags = tagsList.join('');
+    document.getElementById('source-col-nome').innerHTML = finalOpt; document.getElementById('source-col-tel').innerHTML = finalOpt; document.getElementById('source-col-email').innerHTML = finalOpt; document.getElementById('source-col-regione').innerHTML = finalOpt; document.getElementById('source-col-eta').innerHTML = finalOpt; document.getElementById('source-col-desideri').innerHTML = finalOpt; document.getElementById('source-col-tags').innerHTML = finalTags;
+    
+    var idx = document.getElementById('source-row-index').value;
+    if(idx !== "") {
+      var row = window.sourcesCache[idx];
+      document.getElementById('source-col-nome').value = row[2]; document.getElementById('source-col-tel').value = row[3]; document.getElementById('source-col-email').value = row[7]; document.getElementById('source-col-regione').value = row[8]; document.getElementById('source-col-eta').value = row[10] || ""; document.getElementById('source-col-desideri').value = row[11] || "";
+      var oldTags = row[4] ? row[4].split(',') : []; document.querySelectorAll('.tag-cb').forEach(cb => { if(oldTags.indexOf(cb.value) > -1) cb.checked = true; });
+    }
+  }
+
+  function saveSource() {
+    showLoader("Salvataggio Sorgente Meta...");
+    var tags = []; document.querySelectorAll('.tag-cb:checked').forEach(cb => tags.push(cb.value));
+    var cfg = { editIndex: document.getElementById('source-row-index').value, id: document.getElementById('source-id-hidden').value, tabName: document.getElementById('source-tab').value, colNomeString: document.getElementById('source-col-nome').value, colTelString: document.getElementById('source-col-tel').value, colEmailString: document.getElementById('source-col-email').value, colRegioneString: document.getElementById('source-col-regione').value, colTagsString: tags.join(','), headerRow: document.getElementById('source-header-row').value, label: document.getElementById('source-label').value.trim(), skipGeo: document.getElementById('source-skip-geo').checked, colEtaString: document.getElementById('source-col-eta').value, colDesideriString: document.getElementById('source-col-desideri').value };
+    google.script.run.withSuccessHandler(() => { hideLoader(); bootstrap.Modal.getInstance(document.getElementById('modalAddSource')).hide(); loadSourcesList(); }).saveNewSource(cfg);
+  }
+
+  window.currentCampaignLeads = [];
+
+  // expandFilters ELIMINATA! Mandiamo i dati puri al server.
+function simulateTarget() {
+    // Usiamo istantaneamente la lista appena creata in tempo reale dal Mirino!
+    if (!window.currentCampaignLeads) window.currentCampaignLeads = [];
+    var count = window.currentCampaignLeads.length;
+    
+    var btn = document.getElementById('btn-generate-queue');
+    var fb = document.getElementById('camp-feedback');
+
+    if (count === 0) {
+      fb.innerHTML = "❌ <b>Nessun contatto trovato</b>. Modifica i filtri o controlla che non ci siano esclusioni troppo severe.";
+      btn.disabled = true;
+    } else {
+      var limit = parseInt(window.appConfigs['LIMITE_GIORNO']) || 80;
+      var days = Math.ceil(count / limit);
+      var oggi = Math.min(count, limit);
+      var rimandati = count - oggi;
+      
+      var dMin = parseInt(window.appConfigs['DELAY_MIN']) || 30;
+      var dMax = parseInt(window.appConfigs['DELAY_MAX']) || 80;
+      var pBlocco = parseInt(window.appConfigs['PAUSA_BLOCCO']) || 25;
+      var pMinuti = parseInt(window.appConfigs['MINUTI_PAUSA']) || 15;
+      
+      var avgDelay = (dMin + dMax) / 2;
+      var pauseCount = Math.floor(oggi / pBlocco);
+      var totalSeconds = (oggi * avgDelay) + (pauseCount * pMinuti * 60);
+      var ore = Math.floor(totalSeconds / 3600);
+      var minuti = Math.floor((totalSeconds % 3600) / 60);
+      var tempoStimatoOggi = ore > 0 ? `${ore}h e ${minuti}m` : `${minuti} minuti`;
+
+      fb.innerHTML = `✅ <b>Target Calcolato: ${count} Lead pronti.</b> (Esattamente quelli nel Mirino!)\n\n` +
+                     `📅 <b>Pianificazione Automatica:</b>\n` +
+                     `- Oggi invierai a: <b class="text-success">${oggi}</b> contatti.\n` +
+                     `⏱️ <b>Tempo stimato per l'invio di oggi:</b> ${tempoStimatoOggi}\n` +
+                     (rimandati > 0 ? `- In coda (smaltimento in ${days} giorni): <b class="text-warning">${rimandati}</b> contatti.\n` : '');
+      btn.disabled = false;
+    }
+  }
+
+  function generateQueue() {
+    if(!window.currentCampaignLeads || window.currentCampaignLeads.length === 0) return;
+
+    var body = document.getElementById('camp-body').value.trim();
+    var hookText = document.getElementById('camp-hook').value;
+    var middleText = document.getElementById('camp-middle').value;
+    var endingText = document.getElementById('camp-ending').value;
+    var image = document.getElementById('camp-image').value;
+
+    if(!body && !hookText && !image) {
+      alert("Inserisci almeno un testo o un'immagine per formare il messaggio!");
+      return;
+    }
+
+    var msgBlocks = {
+      hooks: hookText.split('\n').map(s=>s.trim()).filter(s=>s),
+      body: body,
+      middles: middleText.split('\n').map(s=>s.trim()).filter(s=>s),
+      endings: endingText.split('\n').map(s=>s.trim()).filter(s=>s),
+      image: image
+    };
+
+    showLoader("Generazione coda e incrocio Spintax... Potrebbe richiedere qualche secondo.");
+
+    var desTattoo = document.getElementById('camp-desideri').value.trim();
+    google.script.run.withSuccessHandler(function(res) {
+      hideLoader();
+      if(res.success) {
+        alert(`🎉 CAMPAGNA GENERATA! ${res.count} messaggi calcolati, personalizzati e messi in coda.`);
+        document.getElementById('btn-generate-queue').disabled = true;
+        document.getElementById('camp-feedback').innerHTML = "<i>✅ Coda generata con successo. Puoi chiudere questa finestra. L'estensione provvederà all'invio.</i>";
+      } else {
+        alert("Errore durante la generazione della coda: " + res.error);
+      }
+    }).buildCampaignQueue(window.currentCampaignLeads, msgBlocks, desTattoo);
+  }
+
+  function appendFilter(inputId, val) {
+    if(!val) return;
+    var inp = document.getElementById(inputId);
+    var current = inp.value.split(',').map(s=>s.trim()).filter(s=>s);
+    if(current.indexOf(val) === -1) { 
+      current.push(val); 
+      inp.value = current.join(', '); 
+    }
+    // AGGIUNTA:
+    updateLiveCampaignCount();
+  }
+
+  function fillCampagneFilters() {
+    var htmlList = [];
+    htmlList.push('<option value="">+ Scegli da lista...</option>');
+    
+    // AGGIUNTA: Conteggio totale lead nel DB (ESCLUSI GLI ARCHIVIATI)
+    var totalLeads = 0;
+    if(window.globalLeads) {
+      window.globalLeads.forEach(r => { 
+        if(!(r[7] && String(r[7]).toUpperCase().indexOf("[ARCHIVIATO]") > -1)) totalLeads++; 
+      });
+    }
+    htmlList.push('<option value="TUTTI">TUTTI I CONTATTI (' + totalLeads + ')</option>');
+    
+    // GRUPPO ETÀ: Logica originale (AGE_) + AGGIUNTA numerica
+    htmlList.push('<optgroup label="FASCE D\'ETÀ">');
+    htmlList.push('<option value="AGE_CHILD">👶 Child (' + (window.ageCounts["CHILD"] || 0) + ')</option>');
+    htmlList.push('<option value="AGE_YOUNG">👦 Young (' + (window.ageCounts["YOUNG"] || 0) + ')</option>');
+    htmlList.push('<option value="AGE_ADULT">👱 Adult (' + (window.ageCounts["ADULT"] || 0) + ')</option>');
+    htmlList.push('<option value="AGE_MAN">👨 Man (' + (window.ageCounts["MAN"] || 0) + ')</option>');
+    htmlList.push('<option value="AGE_OLD">👴 Old (' + (window.ageCounts["OLD"] || 0) + ')</option>');
+    htmlList.push('<option value="AGE_N/D">❓ Età Sconosciuta (' + (window.ageCounts["N/D"] || 0) + ')</option>');
+    htmlList.push('</optgroup>');
+    
+    // MACROAREE: Logica originale + AGGIUNTA numerica
+    htmlList.push('<optgroup label="MACROAREE">');
+    var macroKeys = Object.keys(window.macroareeMap);
+    for(var m=0; m<macroKeys.length; m++) {
+      var mName = macroKeys[m];
+      var mCount = window.macroCounts[mName] || 0;
+      htmlList.push('<option value="' + mName + '">' + mName + ' (' + mCount + ')</option>');
+    }
+    htmlList.push('</optgroup>');
+    
+    // REGIONI: CICLO ORIGINALE SU "TUTTE_REGIONI" PRESERVATO + AGGIUNTA numerica
+    htmlList.push('<optgroup label="REGIONI">');
+    for(var r=0; r<TUTTE_REGIONI.length; r++) {
+      var rName = TUTTE_REGIONI[r];
+      var rCount = window.regionCounts[rName] || 0;
+      htmlList.push('<option value="' + rName + '">' + rName + ' (' + rCount + ')</option>');
+    }
+    // Caso speciale N/D (Senza regione) mantenuto come da originale
+    var ndRegCount = window.ageCounts["N/D"] || 0;
+    htmlList.push('<option value="N/D">N/D (Senza Regione) (' + ndRegCount + ')</option>');
+    htmlList.push('</optgroup>');
+    
+    // --- MENU DEDICATO E ISOLATO SOLO PER DESIDERI (Ordine decrescente e Filtro 7) ---
+    var desListHtml = ['<option value="">+ Scegli un desiderio...</option>'];
+    var sortableDes = [];
+    for(var d in window.desideriCounts) { sortableDes.push({des: d, count: window.desideriCounts[d]}); }
+    sortableDes.sort(function(a, b) { return b.count - a.count; }); // Ordine decrescente
+    
+    for(var i=0; i<sortableDes.length; i++) {
+      var item = sortableDes[i];
+      // Sbarramento: Mostra solo i desideri con almeno 7 lead (o la parola TEST)
+      if(item.count >= 7 || String(item.des).toUpperCase() === "TEST") {
+        desListHtml.push('<option value="' + item.des + '">' + item.des + ' (' + item.count + ')</option>');
+      }
+    }
+    document.getElementById('sel-desideri').innerHTML = desListHtml.join('');
+
+    // TAGS: LOGICA ORIGINALE IDENTICA (Filtro 7 lead / TEST e ordinamento)
+    htmlList.push('<optgroup label="TAGS">');
+    if(window.tagCounts) {
+      var sortableTags = [];
+      for(var t in window.tagCounts) { 
+        sortableTags.push({tag: t, count: window.tagCounts[t]}); 
+      }
+      
+      sortableTags.sort(function(a, b) { return b.count - a.count; });
+      
+      for(var i=0; i<sortableTags.length; i++) {
+        var item = sortableTags[i];
+        // Mantengo il tuo sbarramento di sicurezza
+        if(item.count >= 7 || String(item.tag).toUpperCase() === "TEST") {
+          htmlList.push('<option value="' + item.tag + '">' + item.tag + ' (' + item.count + ' lead)</option>');
+        }
+      }
+    }
+    htmlList.push('</optgroup>');
+    
+    var finalOptions = htmlList.join('');
+    
+    document.getElementById('sel-calderone').innerHTML = finalOptions;
+    document.getElementById('sel-requisito').innerHTML = finalOptions;
+    document.getElementById('sel-esclusione').innerHTML = finalOptions;
+  }
+
+  // ==========================================
+// CONTATORE LIVE CAMPAGNA (LOGICA LOCALE)
+// ==========================================
+function updateLiveCampaignCount() {
+    if (!window.globalLeads || window.globalLeads.length === 0) return;
+
+    var getF = (id) => document.getElementById(id).value.split(',').map(s=>s.trim().toUpperCase()).filter(s=>s);
+    var desideriFilt = getF('camp-desideri');
+    var calderone = getF('camp-calderone');
+    var requisito = getF('camp-requisito');
+    var esclusione = getF('camp-esclusione');
+
+    // Se i filtri sono vuoti, blocca tutto a ZERO e svuota la lista!
+    if (calderone.length === 0 && requisito.length === 0 && esclusione.length === 0) {
+      document.getElementById('live-target-count').innerText = "0";
+      window.currentCampaignLeads = []; 
+      return;
+    }
+
+    var matchedLeads = []; // Qui salviamo i contatti esatti!
+    var currentYear = new Date().getFullYear();
+    var safeCfg = window.appConfigs || {};
+    var th = [parseInt(safeCfg['AGE_TH_1'])||17, parseInt(safeCfg['AGE_TH_2'])||30, parseInt(safeCfg['AGE_TH_3'])||45, parseInt(safeCfg['AGE_TH_4'])||54];
+
+    window.globalLeads.forEach(row => {
+      var tags = String(row[7] || "").toUpperCase();
+      
+      // --- 🛡️ SCUDO ANTI-ARCHIVIATI (LIVE COUNTER) ---
+      if (tags.indexOf("[ARCHIVIATO]") > -1) return; // Salta l'archiviato! Non finisce nel calcolo.
+      // ------------------------------------------------
+      
+      var reg = String(row[9] || "").toUpperCase().trim();
+      if (reg.indexOf("(AUTO:") > -1) reg = reg.split("(AUTO:")[0].trim();
+      var stato = String(row[3] || "").toUpperCase();
+      
+      // Età
+      var ageGrp = "N/D";
+      var anno = window.idxAnnoNascita > -1 ? row[window.idxAnnoNascita] : "";
+      if (anno && !isNaN(anno)) {
+        var age = currentYear - parseInt(anno);
+        if(age <= th[0]) ageGrp = "CHILD"; else if(age <= th[1]) ageGrp = "YOUNG"; else if(age <= th[2]) ageGrp = "ADULT"; else if(age <= th[3]) ageGrp = "MAN"; else ageGrp = "OLD";
+      }
+
+      // Macroaree
+      var macroList = [];
+      for (let m in window.macroareeMap) { if (window.macroareeMap[m].includes(reg)) macroList.push(m); }
+      var leadMacros = macroList.join(" ");
+
+      var storicoDes = window.idxStoricoDesideri > -1 ? String(row[window.idxStoricoDesideri] || "").toUpperCase() : "";
+      var combinedData = reg + " " + tags + " AGE_" + ageGrp + " " + leadMacros + " " + storicoDes;
+      
+      var leadDesideri = window.idxDesideri > -1 ? String(row[window.idxDesideri] || "").toUpperCase() : "";
+      var inDesideri = (desideriFilt.length === 0 || desideriFilt.some(d => leadDesideri.indexOf(d) > -1));
+      if (!inDesideri) return;
+
+      // Scudo Temporale
+      var scudoGiorni = parseInt(document.getElementById('camp-scudo').value) || 0;
+      var soloNuovi = document.getElementById('camp-solonuovi').checked;
+      var isNuovo = stato === "DA CONTATTARE" || stato === "";
+      
+      if (soloNuovi && !isNuovo) return;
+      if (!isNuovo && scudoGiorni > 0 && stato.indexOf("CONTATTATO IL") > -1) {
+        var dataMatch = stato.match(/(\d{2})\/(\d{2})\/(\d{4})/);
+        if (dataMatch) {
+          var dataContatto = new Date(dataMatch[3], parseInt(dataMatch[2])-1, dataMatch[1]);
+          var diffGiorni = Math.floor((new Date() - dataContatto) / (1000 * 60 * 60 * 24));
+          if (diffGiorni <= scudoGiorni) return;
+        }
+      }
+
+      // Regole Calderone, AND e NOT
+      var inCalderone = (calderone.length === 0 || calderone.includes("TUTTI") || calderone.some(c => combinedData.indexOf(c) > -1));
+      if (!inCalderone) return;
+
+      var haRequisiti = requisito.every(r => combinedData.indexOf(r) > -1);
+      if (!haRequisiti) return;
+
+      var daEscludere = esclusione.some(e => combinedData.indexOf(e) > -1);
+      if (daEscludere) return;
+
+      // Se supera tutti i controlli, CATTURALO con nome e numero esatto (Colonna 1 e 0)
+      matchedLeads.push({ telefono: String(row[1]), nome: String(row[0]) });
+    });
+
+    // Aggiorniamo la lista globale che il pulsante userà e il numerino visivo
+    window.currentCampaignLeads = matchedLeads;
+    document.getElementById('live-target-count').innerText = matchedLeads.length;
+  }
+
+function openCleanupModal(idx, label) {
+    var msg = `🧹 BONIFICA SELETTIVA: ${label}\n\n` +
+              `Questa operazione cancellerà i dati inseriti dal Bot per questa sorgente per permetterti di ricollegare nuove colonne.\n\n` +
+              `🔐 RESTERANNO AL SICURO:\n` +
+              `- Note, Funnel, Stato Invio e Storico Desideri\n` +
+              `- Ogni dato che hai corretto a mano (senza etichetta Bot)\n\n` +
+              `Cosa vuoi pulire?\n` +
+              `Digitare 'TAG' per i tag, 'GEO' per Regioni/Età, o 'TUTTO' per entrambi.`;
+    
+    var scelta = prompt(msg);
+    if (!scelta) return;
+    
+    var mode = '';
+    if (scelta.toUpperCase() === 'TAG') mode = 'TAGS';
+    else if (scelta.toUpperCase() === 'GEO') mode = 'GEO';
+    else if (scelta.toUpperCase() === 'TUTTO') mode = 'ALL';
+    else { alert("Scelta non valida."); return; }
+
+    showLoader("Bonifica in corso... Sto rileggendo i fogli Meta per non sbagliare un colpo.");
+    google.script.run.withSuccessHandler(function(res) {
+      hideLoader();
+      if(res.success) {
+        alert(`✅ Bonifica completata!\nPuliti ${res.count} contatti.\nOra puoi cambiare le mappature e lanciare un nuovo Sync.`);
+        loadDashboardLeads();
+      } else {
+        alert("Errore: " + res.error);
+      }
+    }).runSourceCleanup(idx, mode);
+  }
+
+
+  // Uccide l'autocomplete di Chrome su tutti gli input
+document.addEventListener('focusin', function(e) {
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
+    e.target.setAttribute('autocomplete', 'new-password'); // L'unico valore che Chrome rispetta sempre
+  }
+});
+
+
+// TRUCCO "ONE-TIME-CODE": L'ultima speranza contro Chrome
+document.addEventListener('DOMContentLoaded', function() {
+  const killChromeAutofill = () => {
+    document.querySelectorAll('input, textarea').forEach(el => {
+      // Usiamo 'one-time-code' perché Chrome evita di suggerire nomi su campi SMS/Verifica
+      el.setAttribute('autocomplete', 'one-time-code');
+      el.setAttribute('spellcheck', 'false');
+      // Cambiamo dinamicamente l'attributo per confonderlo ulteriormente
+      el.addEventListener('focus', () => el.setAttribute('autocomplete', 'one-time-code'));
+    });
+  };
+
+  killChromeAutofill();
+  // Lo ripetiamo dopo un secondo per fregare i caricamenti ritardati di Chrome
+  setTimeout(killChromeAutofill, 1000);
+});
+
+
+// === MOTORE DISEGNO BOTTONI (PULITO ED ELEGANTE) ===
+function disegnaBottoniPaginazione(totalItems, totalPages) {
+  var pagContainer = document.getElementById('pagination-container');
+  if (!pagContainer) return; // Se non c'è, si ferma in silenzio
+
+  // Legge la dimensione della pagina scelta (di base 1000)
+  window.pageSize = window.pageSize || parseInt(localStorage.getItem('crm_page_size')) || 1000;
+
+  // Stile pulito per la barra
+  pagContainer.className = 'd-flex justify-content-between align-items-center p-3 bg-white rounded border border-secondary shadow-sm';
+
+  if (totalItems === 0 || totalPages <= 1) {
+    pagContainer.innerHTML = `<span class="text-muted small fw-bold">Mostrando tutti i ${totalItems} lead in un'unica pagina.</span>`;
+    return;
+  }
+
+  // Creazione dei bottoni
+  var btnPrev = `<button class="btn btn-outline-primary fw-bold px-4 py-2" ${window.currentPage === 1 ? 'disabled' : ''} onclick="cambiaPagina(-1)">⬅️ Indietro</button>`;
+  var btnNext = `<button class="btn btn-outline-primary fw-bold px-4 py-2" ${window.currentPage === totalPages ? 'disabled' : ''} onclick="cambiaPagina(1)">Avanti ➡️</button>`;
+
+  // Stampa il contenuto nella scatola
+  pagContainer.innerHTML = `
+    <div><span class="text-muted small">Visualizzati <b>${(window.currentPage-1)*window.pageSize + 1}</b> - <b>${Math.min(window.currentPage*window.pageSize, totalItems)}</b> su <b>${totalItems}</b> lead filtrati</span></div>
+    <div class="d-flex align-items-center gap-3">
+      ${btnPrev} 
+      <span class="fw-bold text-dark px-3 py-2 border rounded bg-light">Pagina ${window.currentPage} di ${totalPages}</span> 
+      ${btnNext}
+    </div>
+  `;
+}
+
+function cambiaPagina(direzione) {
+  window.currentPage += direzione;
+  renderLeadsTable(); 
+  // Usa il tbody per fare lo scroll in alto in modo sicuro
+  var tbody = document.getElementById('leads-body');
+  if(tbody && tbody.closest('table')) {
+    tbody.closest('table').scrollIntoView({ behavior: 'smooth', block: 'start' }); 
+  }
+}
+
+function sendWA(phone, name) {
+  // Personalizza qui il tuo messaggio di benvenuto
+  var messaggio = "Ciao " + name + ", ti contatto in merito alla tua richiesta...";
+  var url = "https://web.whatsapp.com/send?phone=" + phone + "&text=" + encodeURIComponent(messaggio);
+  
+  window.open(url, '_blank');
+}
+
+// === FUNZIONE PER ESPORTARE I LEAD FILTRATI IN CSV ===
+// === ESPORTAZIONE INTELLIGENTE (DATA MINING) ===
+function exportFilteredLeads() {
+  // 1. Recuperiamo i valori dei filtri attivi per replicare la vista della dashboard
+  var searchTerms = document.getElementById('filter-text').value.toLowerCase().split(',').map(t => t.trim()).filter(t => t.length > 0);
+  var funnelFilt = document.getElementById('filter-funnel').value;
+  var regionFilt = document.getElementById('filter-regione').value;
+  var macroFilt = document.getElementById('filter-macroarea').value;
+  var etaFilt = document.getElementById('filter-eta').value;
+
+  // 2. Prepariamo il CSV: \ufeff serve a far capire gli accenti a Excel (BOM)
+  // Usiamo il punto e virgola (;) perché Excel Italia lo adora
+  var csv = "\ufeffNome;Telefono;Email;Sorgente;Regione;Macroarea;Stato/Funnel;Note\n";
+
+  // 3. Cicliamo sui dati ORIGINALI (globalLeads) e non sulla tabella HTML
+  window.globalLeads.forEach(function(row) {
+    var nome = row[0] || "", 
+        tel = row[1] || "", 
+        sorg = row[2] || "", 
+        note = row[5] || "", 
+        funnel = row[6] || "", 
+        tags = row[7] || "", 
+        mail = row[8] || "", 
+        reg = row[9] || "N/D";
+    
+    // Recuperiamo l'anno di nascita per calcolare l'età (stessa logica della tabella)
+    var annoNascita = window.idxAnnoNascita > -1 ? row[window.idxAnnoNascita] : "";
+    
+    // --- REPLICHIAMO I FILTRI ---
+    var fullText = (nome + tel + sorg + note + tags + mail).toLowerCase(); 
+    if(searchTerms.length > 0 && !searchTerms.some(t => fullText.indexOf(t) > -1)) return;
+    if(funnelFilt && funnel !== funnelFilt) return;
+
+    // Logica Età per Filtro
+    var ageGroup = "N/D";
+    if (annoNascita && !isNaN(annoNascita)) {
+      var currentAge = new Date().getFullYear() - parseInt(annoNascita);
+      var safeCfg = window.appConfigs || {};
+      var th1 = parseInt(safeCfg['AGE_TH_1']) || 17, th2 = parseInt(safeCfg['AGE_TH_2']) || 30, 
+          th3 = parseInt(safeCfg['AGE_TH_3']) || 45, th4 = parseInt(safeCfg['AGE_TH_4']) || 54;
+      if(currentAge <= th1) ageGroup = "CHILD"; else if(currentAge <= th2) ageGroup = "YOUNG"; 
+      else if(currentAge <= th3) ageGroup = "ADULT"; else if(currentAge <= th4) ageGroup = "MAN"; else ageGroup = "OLD";
+    }
+    if(etaFilt && etaFilt !== ageGroup) return;
+
+    // Logica Regione (puliamo da "(Auto: ...)" o "(Mappato)")
+    var cleanReg = reg.split('(')[0].trim();
+    if(regionFilt === "MAPS") { if(reg.indexOf("Tentativo") === -1) return; } 
+    else if(regionFilt && cleanReg.toUpperCase() !== regionFilt.toUpperCase()) return;
+
+    // Logica Macroarea
+    var macroAreaFound = "N/D";
+    for (var m in window.macroareeMap) { if (window.macroareeMap[m].includes(cleanReg.toUpperCase())) { macroAreaFound = m; break; } }
+    if(macroFilt && macroAreaFound !== macroFilt) return;
+
+    // --- PULIZIA FINALE DEL DATO PER IL CSV ---
+    var safeName = nome.replace(/;/g, ',');
+    // Il trucco del \t impedisce la notazione scientifica (3,9E+11)
+    var safeTel = "\t" + String(tel).replace(/\s/g, ''); 
+    var safeMail = mail.replace(/;/g, ',');
+    var safeNote = note.replace(/;/g, ',').replace(/\n/g, ' ').replace(/"/g, '""');
+
+    // 4. Aggiungiamo la riga al file
+    csv += safeName + ";" + safeTel + ";" + safeMail + ";" + sorg + ";" + cleanReg + ";" + macroAreaFound + ";" + funnel + ";\"" + safeNote + "\"\n";
+  });
+
+  // 5. Download del file
+  var blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  var url = URL.createObjectURL(blob);
+  var link = document.createElement("a");
+  var dataOggi = new Date().toLocaleDateString().replace(/\//g, '-');
+  
+  link.setAttribute("href", url);
+  link.setAttribute("download", "Export_CRM_PULITO_" + dataOggi + ".csv");
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+}
+
+function toggleAllChecks(source) {
+  document.querySelectorAll('.lead-checkbox').forEach(cb => cb.checked = source.checked);
+  updateActionBar();
+}
+
+function updateActionBar() {
+  const selected = document.querySelectorAll('.lead-checkbox:checked').length;
+  const bar = document.getElementById('action-bar');
+  const countDisplay = document.getElementById('selected-count');
+  
+  if (selected > 0) {
+    bar.classList.remove('d-none');
+    countDisplay.innerText = selected;
+  } else {
+    bar.classList.add('d-none');
+    document.getElementById('check-all').checked = false;
+  }
+}
+
+function clearSelection() {
+  document.querySelectorAll('.lead-checkbox').forEach(cb => cb.checked = false);
+  document.getElementById('check-all').checked = false;
+  updateActionBar();
+}
+
+
+// ==========================================
+// WILDU CRM - MOTORE AZIONI MASSIVE (BULK) - NATIVO
+// ==========================================
+
+// 1. Recupera i telefoni selezionati
+function getSelectedPhones() {
+  return Array.from(document.querySelectorAll('.lead-checkbox:checked')).map(cb => cb.getAttribute('data-phone'));
+}
+
+// 2. Gestore Cambio Funnel e Regione
+function bulkUpdate(type) {
+  const phones = getSelectedPhones();
+  if(phones.length === 0) return;
+
+  if(type === 'funnel') {
+    const newVal = document.getElementById('bulk-funnel').value;
+    if(!newVal) { alert('Attenzione: Seleziona uno stato dal menu a tendina prima di applicare.'); return; }
+    
+    if(confirm(`Sei sicuro di voler spostare ${phones.length} lead in ${newVal}?`)) {
+      executeBulkAction(phones, 'UPDATE_FUNNEL', newVal, `Spostamento in ${newVal} in corso...`);
+    }
+  } 
+  else if(type === 'regione') {
+    const newVal = document.getElementById('bulk-regione').value;
+    if(!newVal) { alert('Attenzione: Seleziona una regione dal menu a tendina prima di applicare.'); return; }
+    
+    if(confirm(`Sei sicuro di voler assegnare la regione ${newVal} a ${phones.length} lead?`)) {
+      executeBulkAction(phones, 'UPDATE_REGIONE', newVal, `Assegnazione regione in corso...`);
+    }
+  }
+  else if(type === 'tags') {
+    const newVal = prompt(`Digita i TAG da aggiungere a ${phones.length} lead (separati da virgola):\nEs. ESTERO, VIP, DA CHIAMARE`);
+    if(newVal && newVal.trim() !== "") {
+      executeBulkAction(phones, 'ADD_TAGS', newVal.trim().toUpperCase(), `Aggiunta tag in corso...`);
+    }
+  }
+  else if(type === 'remove_tags') {
+    const newVal = prompt(`Digita i TAG esatti da RIMUOVERE da ${phones.length} lead (separati da virgola):\nEs. DA CHIAMARE, CONTATTATO`);
+    if(newVal && newVal.trim() !== "") {
+      executeBulkAction(phones, 'REMOVE_TAGS', newVal.trim().toUpperCase(), `Rimozione tag in corso...`);
+    }
+  }
+}
+
+// 3. Gestore Archivia / Ripristina (La Stanza Segreta)
+function bulkArchiveToggle() {
+  const phones = getSelectedPhones();
+  if(phones.length === 0) return;
+  
+  // Controlla se siamo nella stanza segreta per capire se deve archiviare o ripristinare
+  const isSecretRoom = document.getElementById('toggle-archiviati') ? document.getElementById('toggle-archiviati').checked : false;
+  const actionType = isSecretRoom ? 'RESTORE' : 'ARCHIVE';
+  const actionText = isSecretRoom ? 'Ripristino' : 'Archiviazione';
+  
+  const msg = isSecretRoom ? `Stai per ripristinare ${phones.length} lead.` : `Stai per archiviare ${phones.length} lead. Spariranno dalla vista principale.`;
+  
+  if(confirm(`Sei sicuro?\n${msg}`)) {
+    executeBulkAction(phones, actionType, '', `${actionText} in corso...`);
+  }
+}
+
+// 4. Gestore Eliminazione Definitiva
+function bulkDelete() {
+  const phones = getSelectedPhones();
+  if(phones.length === 0) return;
+  
+  if(confirm(`⚠️ ELIMINAZIONE DEFINITIVA ⚠️\nStai per eliminare ${phones.length} lead PER SEMPRE dal database.\n\nSei assolutamente sicuro?`)) {
+    executeBulkAction(phones, 'DELETE', '', 'Eliminazione in corso...');
+  }
+}
+
+// 5. IL COMUNICATORE COL SERVER (Sincronizzazione Reale Nativa)
+function executeBulkAction(phones, actionType, newValue, loadingMessage) {
+  // 1. Attiva il loader verde a tutto schermo
+  showLoader(loadingMessage);
+  
+  // 2. Chiama la funzione su Google Apps Script (che aggiorna il Foglio Ombra VERO)
+  google.script.run
+    .withSuccessHandler(function(res) {
+      hideLoader(); // Spegne la rotellina
+      if(res.success) {
+        alert(`✅ Completato! Operazione eseguita con successo su ${res.count} contatti.`);
+        clearSelection(); // Svuota le spunte visivamente
+        loadDashboardLeads(); // Ricarica tutta la tabella e i contatori aggiornati dal server!
+      } else {
+        alert('❌ Errore Server: ' + res.error);
+      }
+    })
+    .withFailureHandler(function(err) { 
+      hideLoader(); 
+      alert('❌ Errore di Rete: ' + err.message); 
+    })
+    .processBulkAction(phones, actionType, newValue);
+}
+
+
+
+// Funzioni di utilità per la UI (seleziona tutti, mostra/nascondi barra)
+function toggleAllChecks(source) {
+  document.querySelectorAll('.lead-checkbox').forEach(cb => {
+    // Spunta solo se la riga non è nascosta dai filtri
+    if (cb.closest('tr').style.display !== 'none') cb.checked = source.checked;
+  });
+  updateActionBar();
+}
+
+function updateActionBar() {
+  const selected = document.querySelectorAll('.lead-checkbox:checked').length;
+  const bar = document.getElementById('action-bar');
+  const countDisplay = document.getElementById('selected-count');
+  
+  if (selected > 0) {
+    bar.classList.remove('d-none');
+    countDisplay.innerText = selected;
+  } else {
+    bar.classList.add('d-none');
+    const checkAll = document.getElementById('check-all');
+    if(checkAll) checkAll.checked = false;
+  }
+}
+
+function clearSelection() {
+  document.querySelectorAll('.lead-checkbox').forEach(cb => cb.checked = false);
+  const checkAll = document.getElementById('check-all');
+  if(checkAll) checkAll.checked = false;
+  updateActionBar();
+}
+
+// --- MOTORE UI GESTIONE FUNNEL ---
+function addFunnelUI() {
+  var val = document.getElementById('add-funnel-input').value.trim().toUpperCase();
+  if(!val) return;
+  var ta = document.getElementById('conf-TPL_FUNNELS');
+  var current = ta.value.split('\n').map(s=>s.trim()).filter(s=>s);
+  
+  if(current.indexOf(val) === -1) {
+    current.push(val);
+    ta.value = current.join('\n');
+    document.getElementById('add-funnel-input').value = '';
+    refreshRemoveFunnelUI();
+    alert("✅ Funnel aggiunto alla lista!\nRicordati di cliccare il bottone blu 'SALVA' per confermare.");
+  } else {
+    alert("⚠️ Questo stato esiste già.");
+  }
+}
+
+function removeFunnelUI() {
+  var val = document.getElementById('remove-funnel-select').value;
+  if(!val) return;
+  var ta = document.getElementById('conf-TPL_FUNNELS');
+  var current = ta.value.split('\n').map(s=>s.trim()).filter(s=>s);
+  
+  var filtered = current.filter(s => s !== val);
+  ta.value = filtered.join('\n');
+  refreshRemoveFunnelUI();
+  alert("🗑️ Funnel rimosso dalla lista.\nRicordati di cliccare il bottone blu 'SALVA' per confermare.");
+}
+
+function refreshRemoveFunnelUI() {
+  var ta = document.getElementById('conf-TPL_FUNNELS');
+  if(!ta) return;
+  var current = ta.value.split('\n').map(s=>s.trim()).filter(s=>s);
+  var sel = document.getElementById('remove-funnel-select');
+  if(sel) {
+    sel.innerHTML = '<option value="">-- Seleziona --</option>' + current.map(f => `<option value="${f}">${f}</option>`).join('');
+  }
+}
+
+
+// --- ROAD 2.5: MOTORE SELEZIONE MULTIPLA SORGENTI ---
+function populateSyncDropdown() {
+  var container = document.getElementById('sync-sources-items');
+  if (!window.sourcesCache || window.sourcesCache.length === 0) {
+    container.innerHTML = '<div class="small text-danger text-center py-2">Nessuna sorgente collegata.</div>';
+    return;
+  }
+  
+  var html = window.sourcesCache.map((row, idx) => {
+    var label = row[6];
+    // Usiamo div e label invece di tag <a> per evitare il bug della schermata bianca
+    return `<div class="form-check mb-2" onclick="event.stopPropagation();">
+              <input class="form-check-input sync-checkbox" type="checkbox" value="${label.replace(/'/g, "\\'")}" id="sync-chk-${idx}">
+              <label class="form-check-label small fw-bold text-dark" for="sync-chk-${idx}">
+                🔗 ${label}
+              </label>
+            </div>`;
+  }).join('');
+  
+  container.innerHTML = html;
+}
+
+function runSyncSelected(isSmart) {
+  // 1. Raccoglie tutte le etichette spuntate
+  var selected = Array.from(document.querySelectorAll('.sync-checkbox:checked')).map(cb => cb.value);
+  
+  if (selected.length === 0) {
+    alert("⚠️ Seleziona almeno una sorgente dalla lista!");
+    return;
+  }
+  
+  // 2. Lancia il sync. La chiusura del menu e la logica UI sono gestite internamente da runSync
+  runSync(selected.join(','), isSmart);
+}
+
+function quickFilterAge(val) {
+    const sel = document.getElementById('filter-eta');
+    if(sel) {
+      sel.value = val;
+      renderLeadsTable();
+      // Un piccolo scroll verso la tabella per mostrare il risultato del filtro
+      sel.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }
+
+</script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
